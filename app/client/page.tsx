@@ -199,16 +199,31 @@ export default function TableauDeBordClient() {
                   .filter((stage: any) => stage.feedbackDeadline && new Date(stage.feedbackDeadline) > new Date())
                   .sort((a: any, b: any) => new Date(a.feedbackDeadline).getTime() - new Date(b.feedbackDeadline).getTime())
 
-                // Trouver l'étape "Demander un rendez-vous"
-                const demandeRdvStage = project.stages.find((stage: any) => stage.name.toLowerCase().includes("demander un rendez-vous"));
+                // Trouver l’étape "Demander un rendez-vous"
+                const demandeRdvStage = project.stages.find((stage: any) => stage.name.toLowerCase().includes("demande un rendez-vous"));
                 // Elle doit être accessible si toutes les étapes précédentes sont terminées, peu importe les suivantes
                 let allPrevStagesDone = false;
                 if (demandeRdvStage) {
                   const prevStages = project.stages.filter((stage: any) => stage.id < demandeRdvStage.id);
                   allPrevStagesDone = prevStages.every((stage: any) => stage.status === "terminé");
                 }
-                // Séparer les étapes à afficher dans la grille principale (hors "Demander un rendez-vous")
-                const mainStages = project.stages.filter((stage: any) => !stage.name.toLowerCase().includes("demander un rendez-vous"));
+
+                // TROUVER LES INDEX POUR INSERTION
+                const paiementInitialeIndex = project.stages.findIndex((s: any) => s.name.toLowerCase().includes("paiement initiale"));
+                const uploadStageIndex = project.stages.findIndex((s: any) => s.name.toLowerCase().includes("upload de fichiers"));
+                const uploadStage = project.stages[uploadStageIndex];
+
+                // Construit la liste ordonnée : toutes les étapes, avec "upload" juste après "paiement initiale"
+                let mainStages: any[] = [];
+                if (paiementInitialeIndex !== -1 && uploadStageIndex !== -1) {
+                  mainStages = [
+                    ...project.stages.slice(0, paiementInitialeIndex + 1),
+                    uploadStage,
+                    ...project.stages.slice(paiementInitialeIndex + 1).filter((s: any) => s.id !== uploadStage.id),
+                  ];
+                } else {
+                  mainStages = project.stages;
+                }
 
                 return (
                   <div key={project._id} className="mb-12">
@@ -258,279 +273,290 @@ export default function TableauDeBordClient() {
                       </Alert>
                     )}
 
-                    {/* Étapes du projet */}
+                    {/* Étapes du projet avec upload juste après paiement initiale */}
                     <div className="flex flex-col lg:flex-row gap-8 mt-8">
                       {/* Grille des étapes principales */}
                       <div className="flex-1 space-y-6">
                         <h2 className="text-xl font-semibold tracking-tight text-brand-dark">Étapes du projet</h2>
                         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                          {mainStages.map((stage: any) => (
-                            <Card
-                              key={stage.id}
-                              className={`border border-gray-200 shadow-sm transition-all duration-200 ${
-                                stage.status === "verrouillé" ? "opacity-70" : ""
-                              } ${stage.status === "en cours" ? "ring-2 ring-brand-yellow/50" : ""}`}
-                            >
-                              <CardHeader className="pb-2">
-                                <div className="flex items-center justify-between">
-                                  <CardTitle className="text-lg text-brand-dark">{stage.name}</CardTitle>
-                                  {stage.status === "verrouillé" ? (
-                                    <LockIcon className="h-4 w-4 text-gray-400" />
-                                  ) : stage.status === "terminé" ? (
-                                    <CheckCircle className="h-4 w-4 text-green-500" />
-                                  ) : (
-                                    <UnlockIcon className="h-4 w-4 text-brand-blue" />
-                                  )}
-                                </div>
-                                <CardDescription>
-                                  {stage.status === "terminé" ? (
-                                    <>Terminé le {new Date(stage.date).toLocaleDateString("fr-FR")}</>
-                                  ) : stage.status === "en cours" ? (
-                                    <>En cours depuis le {new Date(stage.date).toLocaleDateString("fr-FR")}</>
-                                  ) : (
-                                    <>Verrouillé</>
-                                  )}
-                                </CardDescription>
-                              </CardHeader>
-                              <CardContent>
-                                {/* Bouton Voir le devis pour l'étape Devis */}
-                                {stage.name.toLowerCase().includes("devis") && stage.devisUrl && (
-                                  <Button
-                                    variant="outline"
-                                    className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10 mb-2"
-                                    onClick={() => window.open(stage.devisUrl, '_blank')}
-                                  >
-                                    Voir le devis
-                                  </Button>
-                                )}
-
-                                {/* Bouton Uploader un fichier pour l'étape Cahier des charges */}
-                                {stage.name.toLowerCase().includes("cahier des charges") && (
-                                  <Button
-                                    variant="outline"
-                                    className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10 mb-2"
-                                    onClick={() => {
-                                      const uploadSection = document.getElementById(`upload-section-${project._id}`);
-                                      if (uploadSection) {
-                                        uploadSection.scrollIntoView({ behavior: "smooth" });
-                                      }
-                                    }}
-                                  >
-                                    Uploader un fichier
-                                  </Button>
-                                )}
-
-                                {stage.id === 5 && (
-                                  <div className="mt-2">
-                                    <Button
-                                      className="w-full bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
-                                      onClick={() => setShowPaymentOptions((prev: any) => ({ ...prev, [project._id + '-' + stage.id]: !prev[project._id + '-' + stage.id] }))}
-                                    >
-                                      Payer
-                                    </Button>
-                                    {showPaymentOptions && showPaymentOptions[project._id + '-' + stage.id] && (
-                                      <div className="mt-2 flex flex-col gap-2 p-3 rounded border border-brand-blue bg-blue-50">
-                                        {/* Bouton voir RIB si fichier présent */}
-                                        {stage.cahierDesChargesFiles && stage.cahierDesChargesFiles.length > 0 && (
-                                          <Button
-                                            variant="outline"
-                                            className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10"
-                                            type="button"
-                                            onClick={() => setShowRibModal((prev: any) => ({ ...prev, [project._id + '-' + stage.id]: true }))}
-                                          >
-                                            Voir le RIB
-                                          </Button>
-                                        )}
-                                        {/* Bouton signature mandat SEPA */}
-                                        {stage.signatureUrl && (
-                                          <Button
-                                            variant="outline"
-                                            className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10"
-                                            onClick={() => window.open(stage.signatureUrl, '_blank')}
-                                          >
-                                            Signer le mandat
-                                          </Button>
-                                        )}
-                                        {/* Bouton paiement en ligne */}
-                                        {stage.paiementUrl && (
-                                          <Button
-                                            variant="outline"
-                                            className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10"
-                                            onClick={() => window.open(stage.paiementUrl, '_blank')}
-                                          >
-                                            Payer en ligne
-                                          </Button>
-                                        )}
+                          {mainStages.map((stage: any) => {
+                            // Affichage spécial pour l'upload
+                            if (stage && stage.name && stage.name.toLowerCase().includes("upload de fichiers")) {
+                              // Elle est accessible si toutes les étapes précédentes sont terminées (avant upload)
+                              const prevStages = project.stages.filter((s: any) => s.id < stage.id);
+                              const canUpload = prevStages.every((s: any) => s.status === "terminé");
+                              if (!canUpload) {
+                                return (
+                                  <Card key={stage.id}
+                                    className={`border border-brand-blue shadow-md bg-blue-50 opacity-70`}>
+                                    <CardHeader className="pb-2">
+                                      <div className="flex items-center justify-between">
+                                        <CardTitle className="text-lg text-brand-dark">{stage.name}</CardTitle>
+                                        <LockIcon className="h-4 w-4 text-gray-400" />
                                       </div>
+                                      <CardDescription>
+                                        Verrouillé
+                                      </CardDescription>
+                                    </CardHeader>
+                                  </Card>
+                                );
+                              }
+                              return (
+                                <Card key={stage.id}
+                                  className={`border border-brand-blue shadow-md bg-blue-50 ${stage.status === 'verrouillé' ? 'opacity-70' : ''} ${stage.status === 'en cours' ? 'ring-2 ring-brand-yellow/50' : ''}`}>
+                                  <CardHeader className="pb-2">
+                                    <div className="flex items-center justify-between">
+                                      <CardTitle className="text-lg text-brand-dark">{stage.name}</CardTitle>
+                                      {stage.status === "verrouillé" ? (
+                                        <LockIcon className="h-4 w-4 text-gray-400" />
+                                      ) : stage.status === "terminé" ? (
+                                        <CheckCircle className="h-4 w-4 text-green-500" />
+                                      ) : (
+                                        <UnlockIcon className="h-4 w-4 text-brand-blue" />
+                                      )}
+                                    </div>
+                                    <CardDescription>
+                                      {stage.status === "terminé" ? (
+                                        <>Terminé le {new Date(stage.date).toLocaleDateString("fr-FR")}</>
+                                      ) : stage.status === "en cours" ? (
+                                        <>En cours depuis le {new Date(stage.date).toLocaleDateString("fr-FR")}</>
+                                      ) : (
+                                        <>Débloqué</>
+                                      )}
+                                    </CardDescription>
+                                  </CardHeader>
+                                  <CardContent>
+                                    <div className="flex flex-col md:flex-row md:items-center gap-4 mb-2">
+                                      <label htmlFor={`file-upload-${project._id}-${stage.id}`} className="inline-flex items-center px-4 py-2 bg-brand-blue text-white rounded cursor-pointer hover:bg-brand-yellow hover:text-brand-dark transition-colors">
+                                        <Upload className="mr-2 h-5 w-5" />
+                                        Choisir un fichier
+                                        <input
+                                          id={`file-upload-${project._id}-${stage.id}`}
+                                          type="file"
+                                          accept="application/pdf"
+                                          className="hidden"
+                                          onChange={e => {
+                                            if (!e.target.files || e.target.files.length === 0) return;
+                                            setSelectedFile(e.target.files[0]);
+                                          }}
+                                          disabled={isUploading}
+                                        />
+                                      </label>
+                                      {selectedFile && (
+                                        <span className="text-sm text-brand-dark truncate max-w-xs">{selectedFile.name}</span>
+                                      )}
+                                      <Button
+                                        className="bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
+                                        disabled={!selectedFile || isUploading}
+                                        onClick={async () => {
+                                          if (!selectedFile) return;
+                                          setIsUploading(true);
+                                          const formData = new FormData();
+                                          formData.append("file", selectedFile);
+                                          formData.append("stageId", stage.id);
+                                          await fetch(`/api/projects/${project._id}/cahier-des-charges/upload`, {
+                                            method: "POST",
+                                            body: formData,
+                                          });
+                                          // Recharge les projets pour afficher le nouveau fichier
+                                          const res = await fetch(`/api/projects?clientEmail=${encodeURIComponent(user.email)}`);
+                                          const data = await res.json();
+                                          setProjects(data);
+                                          setSelectedFile(null);
+                                          setIsUploading(false);
+                                        }}
+                                      >
+                                        {isUploading ? "Upload en cours..." : "Uploader"}
+                                      </Button>
+                                    </div>
+                                    <div className="text-xs text-gray-500 mb-2">Formats acceptés : PDF</div>
+                                    {/* Liste des fichiers uploadés pour cette étape */}
+                                    {stage.cahierDesChargesFiles && stage.cahierDesChargesFiles.length > 0 ? (
+                                      <ul className="mt-2 space-y-2">
+                                        {stage.cahierDesChargesFiles.map((file: any) => (
+                                          <li key={file.fileId} className="flex items-center gap-2">
+                                            <a
+                                              href={`/api/projects/${project._id}/cahier-des-charges/file?fileId=${file.fileId}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="underline text-brand-blue"
+                                            >
+                                              {file.fileName || "Fichier PDF"}
+                                            </a>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <div className="text-xs text-gray-400">Aucun fichier uploadé pour cette étape.</div>
                                     )}
-                                    {/* Modal d'aperçu du RIB */}
-                                    {showRibModal[project._id + '-' + stage.id] && (
-                                      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-                                        <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full p-6 relative flex flex-col">
-                                          <button
-                                            className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
-                                            onClick={() => setShowRibModal((prev: any) => ({ ...prev, [project._id + '-' + stage.id]: false }))}
-                                          >
-                                            <span className="sr-only">Fermer</span>
-                                            <X className="h-5 w-5" />
-                                          </button>
-                                          <h3 className="text-xl font-bold text-brand-dark mb-4">Aperçu du RIB</h3>
-                                          <div className="flex-1 min-h-[400px] flex flex-col items-center justify-center gap-4">
-                                            <iframe
-                                              src={`/api/projects/${project._id}/cahier-des-charges/file?fileId=${stage.cahierDesChargesFiles[0].fileId}`}
-                                              title="Aperçu RIB"
-                                              className="w-full h-[60vh] border rounded"
-                                              onError={(e) => {
-                                                e.currentTarget.style.display = 'none';
-                                                const fallback = document.getElementById('rib-fallback-' + project._id + '-' + stage.id);
-                                                if (fallback) fallback.style.display = 'block';
-                                              }}
-                                            />
-                                            <div id={`rib-fallback-${project._id + '-' + stage.id}`} style={{ display: 'none' }}>
-                                              <p className="text-sm text-gray-500 mb-2">Impossible d'afficher le PDF dans le navigateur. Vous pouvez le télécharger&nbsp;:</p>
-                                              <a
-                                                href={`/api/projects/${project._id}/cahier-des-charges/file?fileId=${stage.cahierDesChargesFiles[0].fileId}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="underline text-brand-blue"
-                                              >
-                                                Télécharger le RIB
-                                              </a>
+                                  </CardContent>
+                                </Card>
+                              );
+                            }
+
+                            // Affichage normal pour les autres étapes
+                            return (
+                              <Card
+                                key={stage.id}
+                                className={`border border-gray-200 shadow-sm transition-all duration-200 ${
+                                  stage.status === "verrouillé" ? "opacity-70" : ""
+                                } ${stage.status === "en cours" ? "ring-2 ring-brand-yellow/50" : ""}`}
+                              >
+                                <CardHeader className="pb-2">
+                                  <div className="flex items-center justify-between">
+                                    <CardTitle className="text-lg text-brand-dark">{stage.name}</CardTitle>
+                                    {stage.status === "verrouillé" ? (
+                                      <LockIcon className="h-4 w-4 text-gray-400" />
+                                    ) : stage.status === "terminé" ? (
+                                      <CheckCircle className="h-4 w-4 text-green-500" />
+                                    ) : (
+                                      <UnlockIcon className="h-4 w-4 text-brand-blue" />
+                                    )}
+                                  </div>
+                                  <CardDescription>
+                                    {stage.status === "terminé" ? (
+                                      <>Terminé le {new Date(stage.date).toLocaleDateString("fr-FR")}</>
+                                    ) : stage.status === "en cours" ? (
+                                      <>En cours depuis le {new Date(stage.date).toLocaleDateString("fr-FR")}</>
+                                    ) : (
+                                      <>Verrouillé</>
+                                    )}
+                                  </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                  {/* Bouton Voir le devis pour l'étape Devis */}
+                                  {stage.name.toLowerCase().includes("devis") && stage.devisUrl && (
+                                    <Button
+                                      variant="outline"
+                                      className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10 mb-2"
+                                      onClick={() => window.open(stage.devisUrl, '_blank')}
+                                    >
+                                      Voir le devis
+                                    </Button>
+                                  )}
+
+                                  {/* Bouton Uploader un fichier pour l'étape Cahier des charges */}
+                                  {stage.name.toLowerCase().includes("cahier des charges") && (
+                                    <Button
+                                      variant="outline"
+                                      className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10 mb-2"
+                                      onClick={() => {
+                                        const uploadSection = document.getElementById(`upload-section-${project._id}`);
+                                        if (uploadSection) {
+                                          uploadSection.scrollIntoView({ behavior: "smooth" });
+                                        }
+                                      }}
+                                    >
+                                      Uploader un fichier
+                                    </Button>
+                                  )}
+
+                                  {stage.id === 5 && (
+                                    <div className="mt-2">
+                                      <Button
+                                        className="w-full bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
+                                        onClick={() => setShowPaymentOptions((prev: any) => ({ ...prev, [project._id + '-' + stage.id]: !prev[project._id + '-' + stage.id] }))}
+                                      >
+                                        Payer
+                                      </Button>
+                                      {showPaymentOptions && showPaymentOptions[project._id + '-' + stage.id] && (
+                                        <div className="mt-2 flex flex-col gap-2 p-3 rounded border border-brand-blue bg-blue-50">
+                                          {/* Bouton voir RIB si fichier présent */}
+                                          {stage.cahierDesChargesFiles && stage.cahierDesChargesFiles.length > 0 && (
+                                            <Button
+                                              variant="outline"
+                                              className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                              type="button"
+                                              onClick={() => setShowRibModal((prev: any) => ({ ...prev, [project._id + '-' + stage.id]: true }))}
+                                            >
+                                              Voir le RIB
+                                            </Button>
+                                          )}
+                                          {/* Bouton signature mandat SEPA */}
+                                          {stage.signatureUrl && (
+                                            <Button
+                                              variant="outline"
+                                              className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                              onClick={() => window.open(stage.signatureUrl, '_blank')}
+                                            >
+                                              Signer le mandat
+                                            </Button>
+                                          )}
+                                          {/* Bouton paiement en ligne */}
+                                          {stage.paiementUrl && (
+                                            <Button
+                                              variant="outline"
+                                              className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                              onClick={() => window.open(stage.paiementUrl, '_blank')}
+                                            >
+                                              Payer en ligne
+                                            </Button>
+                                          )}
+                                        </div>
+                                      )}
+                                      {/* Modal d'aperçu du RIB */}
+                                      {showRibModal[project._id + '-' + stage.id] && (
+                                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                                          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full p-6 relative flex flex-col">
+                                            <button
+                                              className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
+                                              onClick={() => setShowRibModal((prev: any) => ({ ...prev, [project._id + '-' + stage.id]: false }))}
+                                            >
+                                              <span className="sr-only">Fermer</span>
+                                              <X className="h-5 w-5" />
+                                            </button>
+                                            <h3 className="text-xl font-bold text-brand-dark mb-4">Aperçu du RIB</h3>
+                                            <div className="flex-1 min-h-[400px] flex flex-col items-center justify-center gap-4">
+                                              <iframe
+                                                src={`/api/projects/${project._id}/cahier-des-charges/file?fileId=${stage.cahierDesChargesFiles[0].fileId}`}
+                                                title="Aperçu RIB"
+                                                className="w-full h-[60vh] border rounded"
+                                                onError={(e) => {
+                                                  e.currentTarget.style.display = 'none';
+                                                  const fallback = document.getElementById('rib-fallback-' + project._id + '-' + stage.id);
+                                                  if (fallback) fallback.style.display = 'block';
+                                                }}
+                                              />
+                                              <div id={`rib-fallback-${project._id + '-' + stage.id}`} style={{ display: 'none' }}>
+                                                <p className="text-sm text-gray-500 mb-2">Impossible d'afficher le PDF dans le navigateur. Vous pouvez le télécharger&nbsp;:</p>
+                                                <a
+                                                  href={`/api/projects/${project._id}/cahier-des-charges/file?fileId=${stage.cahierDesChargesFiles[0].fileId}`}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="underline text-brand-blue"
+                                                >
+                                                  Télécharger le RIB
+                                                </a>
+                                              </div>
                                             </div>
                                           </div>
                                         </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-
-                              </CardContent>
-                              <CardFooter>
-                                {/* Suppression du bouton "Valider l'étape" pour toutes les étapes */}
-                                {stage.status === "terminé" && (
-                                  <Button
-                                    variant="outline"
-                                    className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10"
-                                    onClick={() => setSelectedStage(stage)}
-                                  >
-                                    Détails
-                                  </Button>
-                                )}
-                                {stage.status === "verrouillé" && (
-                                  <Button disabled className="w-full opacity-50">
-                                    Verrouillé
-                                  </Button>
-                                )}
-                              </CardFooter>
-                            </Card>
-                          ))}
+                                      )}
+                                    </div>
+                                  )}
+                                </CardContent>
+                                <CardFooter>
+                                  {stage.status === "terminé" && (
+                                    <Button
+                                      variant="outline"
+                                      className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                      onClick={() => setSelectedStage(stage)}
+                                    >
+                                      Détails
+                                    </Button>
+                                  )}
+                                  {stage.status === "verrouillé" && (
+                                    <Button disabled className="w-full opacity-50">
+                                      Verrouillé
+                                    </Button>
+                                  )}
+                                </CardFooter>
+                              </Card>
+                            );
+                          })}
                         </div>
                       </div>
                     </div>
-
-                    {/* Étape suivante : Upload de fichiers */}
-                    {(() => {
-                      // Cherche l'étape "Upload de fichiers" (nom ou id selon votre structure)
-                      const uploadStage = project.stages.find((stage: any) => stage.name.toLowerCase().includes("upload de fichiers"));
-                      if (!uploadStage) return null;
-                      // Elle est accessible si toutes les étapes précédentes sont terminées
-                      const prevStages = project.stages.filter((stage: any) => stage.id < uploadStage.id);
-                      const canUpload = prevStages.every((stage: any) => stage.status === "terminé");
-                      if (!canUpload) return null;
-                      return (
-                        <div className="mt-8" id={`upload-section-${project._id}`}>
-                          <h2 className="text-xl font-semibold tracking-tight text-brand-dark mb-2">Upload de fichiers</h2>
-                          <Card className={`border border-brand-blue shadow-md bg-blue-50 ${uploadStage.status === 'verrouillé' ? 'opacity-70' : ''} ${uploadStage.status === 'en cours' ? 'ring-2 ring-brand-yellow/50' : ''}`}>
-                            <CardHeader className="pb-2">
-                              <div className="flex items-center justify-between">
-                                <CardTitle className="text-lg text-brand-dark">{uploadStage.name}</CardTitle>
-                                {uploadStage.status === "verrouillé" ? (
-                                  <LockIcon className="h-4 w-4 text-gray-400" />
-                                ) : uploadStage.status === "terminé" ? (
-                                  <CheckCircle className="h-4 w-4 text-green-500" />
-                                ) : (
-                                  <UnlockIcon className="h-4 w-4 text-brand-blue" />
-                                )}
-                              </div>
-                              <CardDescription>
-                                {uploadStage.status === "terminé" ? (
-                                  <>Terminé le {new Date(uploadStage.date).toLocaleDateString("fr-FR")}</>
-                                ) : uploadStage.status === "en cours" ? (
-                                  <>En cours depuis le {new Date(uploadStage.date).toLocaleDateString("fr-FR")}</>
-                                ) : (
-                                  <>Verrouillé</>
-                                )}
-                              </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="flex flex-col md:flex-row md:items-center gap-4 mb-2">
-                                <label htmlFor={`file-upload-${project._id}-${uploadStage.id}`} className="inline-flex items-center px-4 py-2 bg-brand-blue text-white rounded cursor-pointer hover:bg-brand-yellow hover:text-brand-dark transition-colors">
-                                  <Upload className="mr-2 h-5 w-5" />
-                                  Choisir un fichier
-                                  <input
-                                    id={`file-upload-${project._id}-${uploadStage.id}`}
-                                    type="file"
-                                    accept="application/pdf"
-                                    className="hidden"
-                                    onChange={e => {
-                                      if (!e.target.files || e.target.files.length === 0) return;
-                                      setSelectedFile(e.target.files[0]);
-                                    }}
-                                    disabled={isUploading}
-                                  />
-                                </label>
-                                {selectedFile && (
-                                  <span className="text-sm text-brand-dark truncate max-w-xs">{selectedFile.name}</span>
-                                )}
-                                <Button
-                                  className="bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
-                                  disabled={!selectedFile || isUploading}
-                                  onClick={async () => {
-                                    if (!selectedFile) return;
-                                    setIsUploading(true);
-                                    const formData = new FormData();
-                                    formData.append("file", selectedFile);
-                                    formData.append("stageId", uploadStage.id);
-                                    await fetch(`/api/projects/${project._id}/cahier-des-charges/upload`, {
-                                      method: "POST",
-                                      body: formData,
-                                    });
-                                    // Recharge les projets pour afficher le nouveau fichier
-                                    const res = await fetch(`/api/projects?clientEmail=${encodeURIComponent(user.email)}`);
-                                    const data = await res.json();
-                                    setProjects(data);
-                                    setSelectedFile(null);
-                                    setIsUploading(false);
-                                  }}
-                                >
-                                  {isUploading ? "Upload en cours..." : "Uploader"}
-                                </Button>
-                              </div>
-                              <div className="text-xs text-gray-500 mb-2">Formats acceptés : PDF</div>
-                              {/* Liste des fichiers uploadés pour cette étape */}
-                              {uploadStage.cahierDesChargesFiles && uploadStage.cahierDesChargesFiles.length > 0 ? (
-                                <ul className="mt-2 space-y-2">
-                                  {uploadStage.cahierDesChargesFiles.map((file: any) => (
-                                    <li key={file.fileId} className="flex items-center gap-2">
-                                      <a
-                                        href={`/api/projects/${project._id}/cahier-des-charges/file?fileId=${file.fileId}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="underline text-brand-blue"
-                                      >
-                                        {file.fileName || "Fichier PDF"}
-                                      </a>
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <div className="text-xs text-gray-400">Aucun fichier uploadé pour cette étape.</div>
-                              )}
-                            </CardContent>
-                          </Card>
-                        </div>
-                      );
-                    })()}
                   </div>
                 )
               })
