@@ -224,7 +224,7 @@ export default function TableauDeBordClient() {
                         <div className="mt-4 md:mt-0">
                           <Button
                             className="bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark shadow"
-                            onClick={() => window.open("https://calendly.com/", "_blank")}
+                            onClick={() => window.open("https://calendly.com/emmanuel-gsweb/parlons-de-votre-projet-30-minutes", "_blank")}
                           >
                             Prendre rendez-vous
                           </Button>
@@ -293,6 +293,33 @@ export default function TableauDeBordClient() {
                                 </CardDescription>
                               </CardHeader>
                               <CardContent>
+                                {/* Bouton Voir le devis pour l'étape Devis */}
+                                {stage.name.toLowerCase().includes("devis") && stage.devisUrl && (
+                                  <Button
+                                    variant="outline"
+                                    className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10 mb-2"
+                                    onClick={() => window.open(stage.devisUrl, '_blank')}
+                                  >
+                                    Voir le devis
+                                  </Button>
+                                )}
+
+                                {/* Bouton Uploader un fichier pour l'étape Cahier des charges */}
+                                {stage.name.toLowerCase().includes("cahier des charges") && (
+                                  <Button
+                                    variant="outline"
+                                    className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10 mb-2"
+                                    onClick={() => {
+                                      const uploadSection = document.getElementById(`upload-section-${project._id}`);
+                                      if (uploadSection) {
+                                        uploadSection.scrollIntoView({ behavior: "smooth" });
+                                      }
+                                    }}
+                                  >
+                                    Uploader un fichier
+                                  </Button>
+                                )}
+
                                 {stage.id === 5 && (
                                   <div className="mt-2">
                                     <Button
@@ -411,7 +438,7 @@ export default function TableauDeBordClient() {
                       const canUpload = prevStages.every((stage: any) => stage.status === "terminé");
                       if (!canUpload) return null;
                       return (
-                        <div className="mt-8">
+                        <div className="mt-8" id={`upload-section-${project._id}`}>
                           <h2 className="text-xl font-semibold tracking-tight text-brand-dark mb-2">Upload de fichiers</h2>
                           <Card className={`border border-brand-blue shadow-md bg-blue-50 ${uploadStage.status === 'verrouillé' ? 'opacity-70' : ''} ${uploadStage.status === 'en cours' ? 'ring-2 ring-brand-yellow/50' : ''}`}>
                             <CardHeader className="pb-2">
