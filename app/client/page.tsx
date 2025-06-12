@@ -13,7 +13,8 @@ import {
   UnlockIcon,
   Upload,
   X,
-  LogOut
+  LogOut,
+  Download
 } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -199,8 +200,8 @@ export default function TableauDeBordClient() {
                   .filter((stage: any) => stage.feedbackDeadline && new Date(stage.feedbackDeadline) > new Date())
                   .sort((a: any, b: any) => new Date(a.feedbackDeadline).getTime() - new Date(b.feedbackDeadline).getTime())
 
-                // Trouver l’étape "Demander un rendez-vous"
-                const demandeRdvStage = project.stages.find((stage: any) => stage.name.toLowerCase().includes("demande un rendez-vous"));
+                // Trouver l'étape "Demander un rendez-vous"
+                const demandeRdvStage = project.stages.find((stage: any) => stage.name.toLowerCase().includes("demander un rendez-vous"));
                 // Elle doit être accessible si toutes les étapes précédentes sont terminées, peu importe les suivantes
                 let allPrevStagesDone = false;
                 if (demandeRdvStage) {
@@ -213,16 +214,17 @@ export default function TableauDeBordClient() {
                 const uploadStageIndex = project.stages.findIndex((s: any) => s.name.toLowerCase().includes("upload de fichiers"));
                 const uploadStage = project.stages[uploadStageIndex];
 
-                // Construit la liste ordonnée : toutes les étapes, avec "upload" juste après "paiement initiale"
+                // Construit la liste ordonnée : toutes les étapes, avec "upload" juste après "paiement initiale"
                 let mainStages: any[] = [];
                 if (paiementInitialeIndex !== -1 && uploadStageIndex !== -1) {
                   mainStages = [
                     ...project.stages.slice(0, paiementInitialeIndex + 1),
                     uploadStage,
-                    ...project.stages.slice(paiementInitialeIndex + 1).filter((s: any) => s.id !== uploadStage.id),
+                    ...project.stages.slice(paiementInitialeIndex + 1)
+                      .filter((s: any) => s.id !== uploadStage.id && !s.name.toLowerCase().includes("demander un rendez-vous")),
                   ];
                 } else {
-                  mainStages = project.stages;
+                  mainStages = project.stages.filter((s: any) => !s.name.toLowerCase().includes("demander un rendez-vous"));
                 }
 
                 return (
@@ -234,14 +236,19 @@ export default function TableauDeBordClient() {
                           Projet pour {project.client} • Démarré le {new Date(project.startDate).toLocaleDateString("fr-FR")}
                         </p>
                       </div>
-                      {/* Bouton RDV en haut à droite si accessible */}
-                      {demandeRdvStage && allPrevStagesDone && (
+                      {/* Bouton RDV en haut à droite - accessible dès que les étapes précédentes sont validées */}
+                      {demandeRdvStage && (
                         <div className="mt-4 md:mt-0">
                           <Button
-                            className="bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark shadow"
-                            onClick={() => window.open("https://calendly.com/emmanuel-gsweb/parlons-de-votre-projet-30-minutes", "_blank")}
+                            className={`${allPrevStagesDone ? 'bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark shadow' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                            onClick={() => {
+                              if (allPrevStagesDone) {
+                                window.open("https://calendly.com/emmanuel-gsweb/parlons-de-votre-projet-30-minutes", "_blank")
+                              }
+                            }}
+                            disabled={!allPrevStagesDone}
                           >
-                            Prendre rendez-vous
+                            {allPrevStagesDone ? 'Prendre rendez-vous' : 'Étapes précédentes en attente de validation'}
                           </Button>
                         </div>
                       )}
@@ -295,7 +302,7 @@ export default function TableauDeBordClient() {
                                         <LockIcon className="h-4 w-4 text-gray-400" />
                                       </div>
                                       <CardDescription>
-                                        Verrouillé
+                                        {stage.status === "terminé" ? "Étape terminée" : "Verrouillé"}
                                       </CardDescription>
                                     </CardHeader>
                                   </Card>
@@ -333,13 +340,13 @@ export default function TableauDeBordClient() {
                                         <input
                                           id={`file-upload-${project._id}-${stage.id}`}
                                           type="file"
-                                          accept="application/pdf"
+                                          accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
                                           className="hidden"
                                           onChange={e => {
                                             if (!e.target.files || e.target.files.length === 0) return;
                                             setSelectedFile(e.target.files[0]);
                                           }}
-                                          disabled={isUploading}
+                                          disabled={isUploading || stage.status === "terminé"}
                                         />
                                       </label>
                                       {selectedFile && (
@@ -347,13 +354,14 @@ export default function TableauDeBordClient() {
                                       )}
                                       <Button
                                         className="bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
-                                        disabled={!selectedFile || isUploading}
+                                        disabled={!selectedFile || isUploading || stage.status === "terminé"}
                                         onClick={async () => {
                                           if (!selectedFile) return;
                                           setIsUploading(true);
                                           const formData = new FormData();
                                           formData.append("file", selectedFile);
                                           formData.append("stageId", stage.id);
+                                          formData.append("stageName", stage.name);
                                           await fetch(`/api/projects/${project._id}/cahier-des-charges/upload`, {
                                             method: "POST",
                                             body: formData,
@@ -369,20 +377,47 @@ export default function TableauDeBordClient() {
                                         {isUploading ? "Upload en cours..." : "Uploader"}
                                       </Button>
                                     </div>
-                                    <div className="text-xs text-gray-500 mb-2">Formats acceptés : PDF</div>
+                                    <div className="text-xs text-gray-500 mb-2">Formats acceptés : PDF, DOC, DOCX, XLS, XLSX, JPG, JPEG, PNG</div>
                                     {/* Liste des fichiers uploadés pour cette étape */}
                                     {stage.cahierDesChargesFiles && stage.cahierDesChargesFiles.length > 0 ? (
                                       <ul className="mt-2 space-y-2">
                                         {stage.cahierDesChargesFiles.map((file: any) => (
-                                          <li key={file.fileId} className="flex items-center gap-2">
-                                            <a
-                                              href={`/api/projects/${project._id}/cahier-des-charges/file?fileId=${file.fileId}`}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="underline text-brand-blue"
-                                            >
-                                              {file.fileName || "Fichier PDF"}
-                                            </a>
+                                          <li key={file.fileId} className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2">
+                                              <a
+                                                href={`/api/projects/${project._id}/cahier-des-charges/file?fileId=${file.fileId}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="underline text-brand-blue"
+                                              >
+                                                {file.fileName || "Fichier"}
+                                              </a>
+                                            </div>
+                                            {stage.status !== "terminé" && (
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                onClick={async () => {
+                                                  if (confirm("Êtes-vous sûr de vouloir supprimer ce fichier ?")) {
+                                                    try {
+                                                      await fetch(`/api/projects/${project._id}/cahier-des-charges/file?fileId=${file.fileId}`, {
+                                                        method: "DELETE",
+                                                      });
+                                                      // Recharge les projets pour mettre à jour la liste des fichiers
+                                                      const res = await fetch(`/api/projects?clientEmail=${encodeURIComponent(user.email)}`);
+                                                      const data = await res.json();
+                                                      setProjects(data);
+                                                    } catch (error) {
+                                                      console.error("Erreur lors de la suppression du fichier:", error);
+                                                      alert("Une erreur est survenue lors de la suppression du fichier.");
+                                                    }
+                                                  }
+                                                }}
+                                              >
+                                                <X className="h-4 w-4" />
+                                              </Button>
+                                            )}
                                           </li>
                                         ))}
                                       </ul>
@@ -424,8 +459,19 @@ export default function TableauDeBordClient() {
                                   </CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                  {/* Bouton Voir le devis pour l'étape Devis */}
-                                  {stage.name.toLowerCase().includes("devis") && stage.devisUrl && (
+                                  {/* Etape Signature : bouton Signer */}
+                                  {stage.name.toLowerCase().includes("signature") && stage.signatureUrl && stage.status !== "terminé" && (
+                                    <Button
+                                      variant="outline"
+                                      className="w-full border-brand-yellow text-brand-yellow hover:bg-brand-yellow/10 mb-2"
+                                      onClick={() => window.open(stage.signatureUrl, '_blank')}
+                                    >
+                                      Signer
+                                    </Button>
+                                  )}
+
+                                  {/* Etape Devis : bouton Voir le devis */}
+                                  {stage.name.toLowerCase().includes("devis") && stage.devisUrl && stage.status !== "terminé" && (
                                     <Button
                                       variant="outline"
                                       className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10 mb-2"
@@ -435,103 +481,248 @@ export default function TableauDeBordClient() {
                                     </Button>
                                   )}
 
-                                  {/* Bouton Uploader un fichier pour l'étape Cahier des charges */}
-                                  {stage.name.toLowerCase().includes("cahier des charges") && (
+                                  {/* Etape Logo/Branding : bouton Voir le logo/branding */}
+                                  {stage.name.toLowerCase().includes("logo") && stage.logoBrandingUrl && stage.status !== "terminé" && (
                                     <Button
                                       variant="outline"
                                       className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10 mb-2"
-                                      onClick={() => {
-                                        const uploadSection = document.getElementById(`upload-section-${project._id}`);
-                                        if (uploadSection) {
-                                          uploadSection.scrollIntoView({ behavior: "smooth" });
-                                        }
-                                      }}
+                                      onClick={() => window.open(stage.logoBrandingUrl, '_blank')}
                                     >
-                                      Uploader un fichier
+                                      Voir le logo/branding
                                     </Button>
                                   )}
 
-                                  {stage.id === 5 && (
+                                  {/* Etape Copyrighting : formulaire intégré */}
+                                  {stage.name.toLowerCase().includes("copyrighting") && stage.status !== "terminé" && (
+                                    <CopyrightingForm
+                                      projectId={project._id}
+                                      stageId={stage.id}
+                                      initialData={stage.copyrightingAnswers}
+                                      onSubmitted={async () => {
+                                        // Recharge les projets pour afficher la confirmation
+                                        const res = await fetch(`/api/projects?clientEmail=${encodeURIComponent(user.email)}`);
+                                        const data = await res.json();
+                                        setProjects(data);
+                                      }}
+                                    />
+                                  )}
+
+                                  {/* Bouton Uploader un fichier pour l'étape Cahier des charges */}
+                                  {stage.name.toLowerCase().includes("cahier des charges") && stage.status !== "terminé" && (
                                     <div className="mt-2">
-                                      <Button
-                                        className="w-full bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
-                                        onClick={() => setShowPaymentOptions((prev: any) => ({ ...prev, [project._id + '-' + stage.id]: !prev[project._id + '-' + stage.id] }))}
-                                      >
-                                        Payer
-                                      </Button>
-                                      {showPaymentOptions && showPaymentOptions[project._id + '-' + stage.id] && (
-                                        <div className="mt-2 flex flex-col gap-2 p-3 rounded border border-brand-blue bg-blue-50">
-                                          {/* Bouton voir RIB si fichier présent */}
-                                          {stage.cahierDesChargesFiles && stage.cahierDesChargesFiles.length > 0 && (
-                                            <Button
-                                              variant="outline"
-                                              className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10"
-                                              type="button"
-                                              onClick={() => setShowRibModal((prev: any) => ({ ...prev, [project._id + '-' + stage.id]: true }))}
-                                            >
-                                              Voir le RIB
-                                            </Button>
-                                          )}
-                                          {/* Bouton signature mandat SEPA */}
-                                          {stage.signatureUrl && (
-                                            <Button
-                                              variant="outline"
-                                              className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10"
-                                              onClick={() => window.open(stage.signatureUrl, '_blank')}
-                                            >
-                                              Signer le mandat
-                                            </Button>
-                                          )}
-                                          {/* Bouton paiement en ligne */}
-                                          {stage.paiementUrl && (
-                                            <Button
-                                              variant="outline"
-                                              className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10"
-                                              onClick={() => window.open(stage.paiementUrl, '_blank')}
-                                            >
-                                              Payer en ligne
-                                            </Button>
-                                          )}
-                                        </div>
-                                      )}
-                                      {/* Modal d'aperçu du RIB */}
-                                      {showRibModal[project._id + '-' + stage.id] && (
-                                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-                                          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full p-6 relative flex flex-col">
-                                            <button
-                                              className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
-                                              onClick={() => setShowRibModal((prev: any) => ({ ...prev, [project._id + '-' + stage.id]: false }))}
-                                            >
-                                              <span className="sr-only">Fermer</span>
-                                              <X className="h-5 w-5" />
-                                            </button>
-                                            <h3 className="text-xl font-bold text-brand-dark mb-4">Aperçu du RIB</h3>
-                                            <div className="flex-1 min-h-[400px] flex flex-col items-center justify-center gap-4">
-                                              <iframe
-                                                src={`/api/projects/${project._id}/cahier-des-charges/file?fileId=${stage.cahierDesChargesFiles[0].fileId}`}
-                                                title="Aperçu RIB"
-                                                className="w-full h-[60vh] border rounded"
-                                                onError={(e) => {
-                                                  e.currentTarget.style.display = 'none';
-                                                  const fallback = document.getElementById('rib-fallback-' + project._id + '-' + stage.id);
-                                                  if (fallback) fallback.style.display = 'block';
-                                                }}
-                                              />
-                                              <div id={`rib-fallback-${project._id + '-' + stage.id}`} style={{ display: 'none' }}>
-                                                <p className="text-sm text-gray-500 mb-2">Impossible d'afficher le PDF dans le navigateur. Vous pouvez le télécharger&nbsp;:</p>
+                                      <div className="flex flex-col md:flex-row md:items-center gap-4 mb-2">
+                                        <label htmlFor={`file-upload-cdc-${project._id}-${stage.id}`} className="inline-flex items-center px-4 py-2 bg-brand-blue text-white rounded cursor-pointer hover:bg-brand-yellow hover:text-brand-dark transition-colors">
+                                          <Upload className="mr-2 h-5 w-5" />
+                                          Choisir un fichier
+                                          <input
+                                            id={`file-upload-cdc-${project._id}-${stage.id}`}
+                                            type="file"
+                                            accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                                            className="hidden"
+                                            onChange={e => {
+                                              if (!e.target.files || e.target.files.length === 0) return;
+                                              setSelectedFile(e.target.files[0]);
+                                            }}
+                                            disabled={isUploading || stage.status === "terminé"}
+                                          />
+                                        </label>
+                                        {selectedFile && (
+                                          <span className="text-sm text-brand-dark truncate max-w-xs">{selectedFile.name}</span>
+                                        )}
+                                        <Button
+                                          className="bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
+                                          disabled={!selectedFile || isUploading || stage.status === "terminé"}
+                                          onClick={async () => {
+                                            if (!selectedFile) return;
+                                            setIsUploading(true);
+                                            const formData = new FormData();
+                                            formData.append("file", selectedFile);
+                                            formData.append("stageId", stage.id);
+                                            formData.append("stageName", stage.name);
+                                            await fetch(`/api/projects/${project._id}/cahier-des-charges/upload`, {
+                                              method: "POST",
+                                              body: formData,
+                                            });
+                                            // Recharge les projets pour afficher le nouveau fichier
+                                            const res = await fetch(`/api/projects?clientEmail=${encodeURIComponent(user.email)}`);
+                                            const data = await res.json();
+                                            setProjects(data);
+                                            setSelectedFile(null);
+                                            setIsUploading(false);
+                                          }}
+                                        >
+                                          {isUploading ? "Upload en cours..." : "Uploader"}
+                                        </Button>
+                                      </div>
+                                      <div className="text-xs text-gray-500 mb-2">Formats acceptés : PDF, DOC, DOCX, XLS, XLSX, JPG, JPEG, PNG</div>
+                                      {/* Liste des fichiers uploadés pour cette étape */}
+                                      {stage.cahierDesChargesFiles && stage.cahierDesChargesFiles.length > 0 ? (
+                                        <ul className="mt-2 space-y-2">
+                                          {stage.cahierDesChargesFiles.map((file: any) => (
+                                            <li key={file.fileId} className="flex items-center justify-between gap-2">
+                                              <div className="flex items-center gap-2">
                                                 <a
-                                                  href={`/api/projects/${project._id}/cahier-des-charges/file?fileId=${stage.cahierDesChargesFiles[0].fileId}`}
+                                                  href={`/api/projects/${project._id}/cahier-des-charges/file?fileId=${file.fileId}`}
                                                   target="_blank"
                                                   rel="noopener noreferrer"
                                                   className="underline text-brand-blue"
                                                 >
-                                                  Télécharger le RIB
+                                                  {file.fileName || "Fichier"}
                                                 </a>
                                               </div>
-                                            </div>
+                                              {stage.status !== "terminé" && (
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                  onClick={async () => {
+                                                    if (confirm("Êtes-vous sûr de vouloir supprimer ce fichier ?")) {
+                                                      try {
+                                                        await fetch(`/api/projects/${project._id}/cahier-des-charges/file?fileId=${file.fileId}`, {
+                                                          method: "DELETE",
+                                                        });
+                                                        // Recharge les projets pour mettre à jour la liste des fichiers
+                                                        const res = await fetch(`/api/projects?clientEmail=${encodeURIComponent(user.email)}`);
+                                                        const data = await res.json();
+                                                        setProjects(data);
+                                                      } catch (error) {
+                                                        console.error("Erreur lors de la suppression du fichier:", error);
+                                                        alert("Une erreur est survenue lors de la suppression du fichier.");
+                                                      }
+                                                    }
+                                                  }}
+                                                >
+                                                  <X className="h-4 w-4" />
+                                                </Button>
+                                              )}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      ) : (
+                                        <div className="text-xs text-gray-400">Aucun fichier uploadé pour cette étape.</div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {stage.id === 5 && stage.status !== "terminé" && (
+                                    <div className="mt-2 flex flex-col gap-2">
+                                      {/* Bouton voir RIB si fichier présent */}
+                                      {stage.cahierDesChargesFiles && stage.cahierDesChargesFiles.length > 0 && (
+                                        <Button
+                                          variant="outline"
+                                          className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                          type="button"
+                                          onClick={() => setShowRibModal((prev: any) => ({ ...prev, [project._id + '-' + stage.id]: true }))}
+                                        >
+                                          Voir le RIB
+                                        </Button>
+                                      )}
+                                      {/* Bouton voir mandat SEPA si présent */}
+                                      {stage.mandatSepaFile && stage.mandatSepaFile.fileId && (
+                                        <Button
+                                          variant="outline"
+                                          className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                          type="button"
+                                          onClick={() => setShowRibModal((prev: any) => ({ ...prev, [project._id + '-mandat']: true }))}
+                                        >
+                                          Voir le mandat
+                                        </Button>
+                                      )}
+                                      {/* Bouton payer en ligne */}
+                                      <Button
+                                        className="w-full bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
+                                        onClick={() => window.open(stage.signatureUrl, '_blank')}
+                                      >
+                                        Payer en ligne
+                                      </Button>
+                                    </div>
+                                  )}
+
+                                  {/* Modal d'aperçu du RIB */}
+                                  {showRibModal[project._id + '-' + stage.id] && (
+                                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                                      <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full p-6 relative flex flex-col">
+                                        <button
+                                          className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
+                                          onClick={() => setShowRibModal((prev: any) => ({ ...prev, [project._id + '-' + stage.id]: false }))}
+                                        >
+                                          <span className="sr-only">Fermer</span>
+                                          <X className="h-5 w-5" />
+                                        </button>
+                                        <h3 className="text-xl font-bold text-brand-dark mb-4">Aperçu du RIB</h3>
+                                        <div className="flex-1 min-h-[400px] flex flex-col items-center justify-center gap-4">
+                                          <iframe
+                                            src={`/api/projects/${project._id}/cahier-des-charges/file?fileId=${stage.cahierDesChargesFiles[0].fileId}`}
+                                            title="Aperçu RIB"
+                                            className="w-full h-[60vh] border rounded"
+                                            onError={(e) => {
+                                              e.currentTarget.style.display = 'none';
+                                              const fallback = document.getElementById('rib-fallback-' + project._id + '-' + stage.id);
+                                              if (fallback) fallback.style.display = 'block';
+                                            }}
+                                          />
+                                          <div id={`rib-fallback-${project._id + '-' + stage.id}`} style={{ display: 'none' }}>
+                                            <p className="text-sm text-gray-500 mb-2">Impossible d'afficher le PDF dans le navigateur. Vous pouvez le télécharger&nbsp;:</p>
+                                            <a
+                                              href={`/api/projects/${project._id}/cahier-des-charges/file?fileId=${stage.cahierDesChargesFiles[0].fileId}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="underline text-brand-blue"
+                                            >
+                                              Télécharger le RIB
+                                            </a>
                                           </div>
                                         </div>
-                                      )}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Modal d'aperçu du mandat SEPA */}
+                                  {showRibModal[project._id + '-mandat'] && stage.mandatSepaFile && stage.mandatSepaFile.fileId && (
+                                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                                      <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full p-6 relative flex flex-col">
+                                        <button
+                                          className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
+                                          onClick={() => setShowRibModal((prev: any) => ({ ...prev, [project._id + '-mandat']: false }))}
+                                        >
+                                          <span className="sr-only">Fermer</span>
+                                          <X className="h-5 w-5" />
+                                        </button>
+                                        <h3 className="text-xl font-bold text-brand-dark mb-4">Aperçu du mandat SEPA</h3>
+                                        <div className="flex-1 min-h-[400px] flex flex-col items-center justify-center gap-4">
+                                          <iframe
+                                            src={`/api/projects/${project._id}/mandat-sepa/file?fileId=${stage.mandatSepaFile.fileId}`}
+                                            title="Aperçu mandat SEPA"
+                                            className="w-full h-[60vh] border rounded"
+                                            onError={(e) => {
+                                              e.currentTarget.style.display = 'none';
+                                              const fallback = document.getElementById('mandat-fallback-' + project._id);
+                                              if (fallback) fallback.style.display = 'block';
+                                            }}
+                                          />
+                                          <a
+                                            href={`/api/projects/${project._id}/mandat-sepa/file?fileId=${stage.mandatSepaFile.fileId}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="mt-2 flex items-center justify-center text-brand-blue hover:text-brand-yellow"
+                                            title="Télécharger le mandat SEPA"
+                                            download
+                                          >
+                                            <Download className="w-7 h-7" />
+                                          </a>
+                                          <div id={`mandat-fallback-${project._id}`} style={{ display: 'none' }}>
+                                            <p className="text-sm text-gray-500 mb-2">Impossible d'afficher le PDF dans le navigateur. Vous pouvez le télécharger&nbsp;:</p>
+                                            <a
+                                              href={`/api/projects/${project._id}/mandat-sepa/file?fileId=${stage.mandatSepaFile.fileId}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="underline text-brand-blue"
+                                            >
+                                              Télécharger le mandat SEPA
+                                            </a>
+                                          </div>
+                                        </div>
+                                      </div>
                                     </div>
                                   )}
                                 </CardContent>
@@ -579,4 +770,138 @@ export default function TableauDeBordClient() {
       </footer>
     </div>
   )
+}
+
+function CopyrightingForm({ projectId, stageId, initialData, onSubmitted }: { projectId: string, stageId: number, initialData?: any, onSubmitted: () => void }) {
+  const [form, setForm] = useState<any>(initialData || {});
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value, type, checked } = e.target;
+    setForm((prev: any) => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    await fetch(`/api/projects/${projectId}/stages/${stageId}/copyrighting`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    });
+    setSubmitting(false);
+    setSuccess(true);
+    onSubmitted();
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4 bg-blue-50 border border-brand-blue rounded p-4 mt-4">
+      <h4 className="font-semibold text-brand-dark mb-2">Formulaire – Rédaction des pages légales de votre site internet</h4>
+      <div className="text-xs text-gray-600 mb-2">Merci de remplir ce formulaire avec précision afin que nous puissions rédiger vos pages légales conformément aux obligations légales en vigueur.</div>
+      {/* 1. Informations générales */}
+      <div className="font-medium text-brand-dark">1. Informations générales sur l'éditeur du site</div>
+      <input className="input" name="nomSociete" placeholder="Nom complet de la société / entité" value={form.nomSociete || ''} onChange={handleChange} />
+      <input className="input" name="formeJuridique" placeholder="Forme juridique" value={form.formeJuridique || ''} onChange={handleChange} />
+      <input className="input" name="capitalSocial" placeholder="Capital social" value={form.capitalSocial || ''} onChange={handleChange} />
+      <input className="input" name="adresseSiege" placeholder="Adresse complète du siège social" value={form.adresseSiege || ''} onChange={handleChange} />
+      <input className="input" name="telephone" placeholder="Numéro de téléphone à afficher" value={form.telephone || ''} onChange={handleChange} />
+      <input className="input" name="emailContact" placeholder="Email de contact à afficher" value={form.emailContact || ''} onChange={handleChange} />
+      <input className="input" name="siret" placeholder="Numéro SIRET / SIREN" value={form.siret || ''} onChange={handleChange} />
+      <input className="input" name="rcs" placeholder="Numéro RCS + ville d'immatriculation" value={form.rcs || ''} onChange={handleChange} />
+      <input className="input" name="ape" placeholder="Code APE / NAF" value={form.ape || ''} onChange={handleChange} />
+      <input className="input" name="tva" placeholder="Numéro de TVA intracommunautaire" value={form.tva || ''} onChange={handleChange} />
+      <input className="input" name="directeurPublication" placeholder="Nom du directeur / responsable de la publication" value={form.directeurPublication || ''} onChange={handleChange} />
+      <input className="input" name="responsableRedaction" placeholder="Nom du responsable de la rédaction (si différent)" value={form.responsableRedaction || ''} onChange={handleChange} />
+      {/* 2. Professions réglementées */}
+      <div className="font-medium text-brand-dark mt-4">2. Informations spécifiques à certaines professions réglementées</div>
+      <input className="input" name="numLicence" placeholder="Numéro de licence / d'agrément / d'enregistrement professionnel" value={form.numLicence || ''} onChange={handleChange} />
+      <input className="input" name="autoritePro" placeholder="Nom et coordonnées de l'autorité ou de l'ordre professionnel" value={form.autoritePro || ''} onChange={handleChange} />
+      <input className="input" name="assurance" placeholder="Conditions d'assurance (RC pro, garantie financière, etc.)" value={form.assurance || ''} onChange={handleChange} />
+      {/* 3. Hébergement */}
+      <div className="font-medium text-brand-dark mt-4">3. Informations sur l'hébergement du site</div>
+      <div className="flex items-center gap-2">
+        <label><input type="checkbox" name="hebergementOui" checked={!!form.hebergementOui} onChange={handleChange} /> Oui</label>
+        <label><input type="checkbox" name="hebergementNon" checked={!!form.hebergementNon} onChange={handleChange} /> Non</label>
+        <label><input type="checkbox" name="hebergementAdefinir" checked={!!form.hebergementAdefinir} onChange={handleChange} /> À définir</label>
+      </div>
+      {form.hebergementNon && (
+        <>
+          <input className="input" name="nomHebergeur" placeholder="Nom de l'hébergeur" value={form.nomHebergeur || ''} onChange={handleChange} />
+          <input className="input" name="adresseHebergeur" placeholder="Adresse complète de l'hébergeur" value={form.adresseHebergeur || ''} onChange={handleChange} />
+          <input className="input" name="telHebergeur" placeholder="Téléphone de l'hébergeur" value={form.telHebergeur || ''} onChange={handleChange} />
+          <input className="input" name="siteHebergeur" placeholder="Site web de l'hébergeur" value={form.siteHebergeur || ''} onChange={handleChange} />
+        </>
+      )}
+      {/* 4. RGPD */}
+      <div className="font-medium text-brand-dark mt-4">4. Politique de confidentialité & RGPD</div>
+      <input className="input" name="emailFormulaire" placeholder="Adresse email de réception des formulaires" value={form.emailFormulaire || ''} onChange={handleChange} />
+      <div className="flex items-center gap-2">
+        <label><input type="checkbox" name="collecteOui" checked={!!form.collecteOui} onChange={handleChange} /> Oui</label>
+        <label><input type="checkbox" name="collecteNon" checked={!!form.collecteNon} onChange={handleChange} /> Non</label>
+      </div>
+      {form.collecteOui && (
+        <>
+          <label className="block text-xs font-medium text-brand-dark mb-1 mt-2">Pour quelles finalités ?</label>
+          <div className="flex flex-wrap gap-2">
+            <label><input type="checkbox" name="finaliteContact" checked={!!form.finaliteContact} onChange={handleChange} /> Gestion de contact</label>
+            <label><input type="checkbox" name="finaliteNewsletter" checked={!!form.finaliteNewsletter} onChange={handleChange} /> Newsletters</label>
+            <label><input type="checkbox" name="finaliteCompte" checked={!!form.finaliteCompte} onChange={handleChange} /> Création de compte</label>
+            <label><input type="checkbox" name="finaliteCommande" checked={!!form.finaliteCommande} onChange={handleChange} /> Commandes/paiements</label>
+            <label><input type="checkbox" name="finaliteRecrutement" checked={!!form.finaliteRecrutement} onChange={handleChange} /> Recrutement</label>
+            <label><input type="checkbox" name="finaliteAutre" checked={!!form.finaliteAutre} onChange={handleChange} /> Autre</label>
+          </div>
+          {form.finaliteAutre && (
+            <input className="input" name="finaliteAutrePreciser" placeholder="Précisez la finalité autre" value={form.finaliteAutrePreciser || ''} onChange={handleChange} />
+          )}
+        </>
+      )}
+      <label className="block text-xs font-medium text-brand-dark mb-1 mt-2">Outils de suivi ou cookies utilisés :</label>
+      <div className="flex flex-wrap gap-2">
+        <label><input type="checkbox" name="cookieAnalytics" checked={!!form.cookieAnalytics} onChange={handleChange} /> Google Analytics</label>
+        <label><input type="checkbox" name="cookieMeta" checked={!!form.cookieMeta} onChange={handleChange} /> Pixel Meta/Facebook</label>
+        <label><input type="checkbox" name="cookiePub" checked={!!form.cookiePub} onChange={handleChange} /> Publicité ciblée</label>
+        <label><input type="checkbox" name="cookieAutre" checked={!!form.cookieAutre} onChange={handleChange} /> Autres</label>
+      </div>
+      {form.cookieAutre && (
+        <input className="input" name="cookieAutrePreciser" placeholder="Précisez l'outil autre" value={form.cookieAutrePreciser || ''} onChange={handleChange} />
+      )}
+      <div className="flex items-center gap-2 mt-2">
+        <label><input type="checkbox" name="bandeauOui" checked={!!form.bandeauOui} onChange={handleChange} /> Bandeau cookies en place</label>
+        <label><input type="checkbox" name="bandeauNon" checked={!!form.bandeauNon} onChange={handleChange} /> Non</label>
+        <label><input type="checkbox" name="bandeauAfaire" checked={!!form.bandeauAfaire} onChange={handleChange} /> À mettre en place</label>
+      </div>
+      {/* 5. Conditions Générales */}
+      <div className="font-medium text-brand-dark mt-4">5. Conditions Générales (si e-commerce ou services)</div>
+      <div className="flex items-center gap-2">
+        <label><input type="checkbox" name="venteOui" checked={!!form.venteOui} onChange={handleChange} /> Oui</label>
+        <label><input type="checkbox" name="venteNon" checked={!!form.venteNon} onChange={handleChange} /> Non</label>
+      </div>
+      <div className="flex items-center gap-2">
+        <label><input type="checkbox" name="cgvOui" checked={!!form.cgvOui} onChange={handleChange} /> Rédaction CGV/CGU</label>
+        <label><input type="checkbox" name="cgvNon" checked={!!form.cgvNon} onChange={handleChange} /> Non</label>
+      </div>
+      <input className="input" name="typeProduits" placeholder="Types de produits/services concernés" value={form.typeProduits || ''} onChange={handleChange} />
+      <label className="block text-xs font-medium text-brand-dark mb-1 mt-2">Modes de paiement acceptés :</label>
+      <div className="flex flex-wrap gap-2">
+        <label><input type="checkbox" name="paiementCB" checked={!!form.paiementCB} onChange={handleChange} /> CB</label>
+        <label><input type="checkbox" name="paiementVirement" checked={!!form.paiementVirement} onChange={handleChange} /> Virement</label>
+        <label><input type="checkbox" name="paiementPaypal" checked={!!form.paiementPaypal} onChange={handleChange} /> Paypal</label>
+        <label><input type="checkbox" name="paiementLivraison" checked={!!form.paiementLivraison} onChange={handleChange} /> À la livraison</label>
+        <label><input type="checkbox" name="paiementAutre" checked={!!form.paiementAutre} onChange={handleChange} /> Autre</label>
+      </div>
+      {form.paiementAutre && (
+        <input className="input" name="paiementAutrePreciser" placeholder="Précisez le mode de paiement autre" value={form.paiementAutrePreciser || ''} onChange={handleChange} />
+      )}
+      <input className="input" name="zones" placeholder="Zones géographiques desservies / livrées" value={form.zones || ''} onChange={handleChange} />
+      <input className="input" name="remboursement" placeholder="Conditions de remboursement / droit de rétractation" value={form.remboursement || ''} onChange={handleChange} />
+      <Button type="submit" className="w-full bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark" disabled={submitting}>
+        {submitting ? "Envoi en cours..." : "Envoyer le formulaire"}
+      </Button>
+      {success && <div className="text-green-600 text-sm mt-2">Formulaire envoyé avec succès !</div>}
+    </form>
+  );
 }

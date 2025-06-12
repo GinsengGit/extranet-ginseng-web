@@ -17,7 +17,8 @@ import {
   User,
   X,
   Trash2,
-  LogOut
+  LogOut,
+  Upload
 } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -90,6 +91,7 @@ export default function TableauDeBordAdmin() {
   const [loading, setLoading] = useState(true)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [openedStageId, setOpenedStageId] = useState<number | null>(null)
+  const [showRibModal, setShowRibModal] = useState<any>({})
 
   // Charger les projets depuis MongoDB Atlas
   useEffect(() => {
@@ -334,6 +336,34 @@ export default function TableauDeBordAdmin() {
     setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
   };
 
+  // Ajouter la fonction de sauvegarde du lien logo/branding
+  const handleLogoBrandingUrlChange = async (newUrl: string, stageId: number) => {
+    if (!selectedProject) return;
+    setProjects((prev: any[]) => prev.map((p) =>
+      p._id === selectedProject._id
+        ? {
+            ...p,
+            stages: p.stages.map((s: any) =>
+              s.id === stageId ? { ...s, logoBrandingUrl: newUrl } : s
+            ),
+          }
+        : p
+    ));
+    await fetch(`/api/projects/${selectedProject._id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stages: selectedProject.stages.map((s: any) =>
+          s.id === stageId ? { ...s, logoBrandingUrl: newUrl } : s
+        ),
+      }),
+    });
+    const res = await fetch("/api/projects");
+    const data = await res.json();
+    setProjects(data);
+    setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
+  };
+
   // Toast de succès pour l'enregistrement du lien devis
   function DevisUrlToast() {
     const [show, setShow] = useState(false);
@@ -376,6 +406,34 @@ export default function TableauDeBordAdmin() {
       }),
     });
     // Recharge les projets
+    const res = await fetch("/api/projects");
+    const data = await res.json();
+    setProjects(data);
+    setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
+  };
+
+  // Ajouter la fonction handleFormUrlChange
+  const handleFormUrlChange = async (newUrl: string, stageId: number) => {
+    if (!selectedProject) return;
+    setProjects((prev: any[]) => prev.map((p) =>
+      p._id === selectedProject._id
+        ? {
+            ...p,
+            stages: p.stages.map((s: any) =>
+              s.id === stageId ? { ...s, formUrl: newUrl } : s
+            ),
+          }
+        : p
+    ));
+    await fetch(`/api/projects/${selectedProject._id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stages: selectedProject.stages.map((s: any) =>
+          s.id === stageId ? { ...s, formUrl: newUrl } : s
+        ),
+      }),
+    });
     const res = await fetch("/api/projects");
     const data = await res.json();
     setProjects(data);
@@ -568,15 +626,32 @@ export default function TableauDeBordAdmin() {
                     <div className="rounded-md bg-yellow-50 border-2 border-brand-yellow p-4">
                       {(() => {
                         // Récupère tous les fichiers de toutes les étapes du projet sélectionné
-                        const allFiles = (selectedProject.stages || []).flatMap((stage: any) =>
-                          (stage.cahierDesChargesFiles || [])
-                            .filter((file: any) => file && file.fileId) // Ne garde que les fichiers encore référencés
-                            .map((file: any) => ({
-                              ...file,
+                        const allFiles = (selectedProject.stages || []).flatMap((stage: any) => {
+                          const files = [];
+                          // Ajoute les fichiers du cahier des charges
+                          if (stage.cahierDesChargesFiles) {
+                            files.push(...stage.cahierDesChargesFiles
+                              .filter((file: any) => file && file.fileId)
+                              .map((file: any) => ({
+                                ...file,
+                                stageName: stage.name,
+                                stageId: stage.id,
+                                type: 'cahier-des-charges'
+                              }))
+                            );
+                          }
+                          // Ajoute le mandat SEPA s'il existe
+                          if (stage.mandatSepaFile) {
+                            files.push({
+                              ...stage.mandatSepaFile,
                               stageName: stage.name,
                               stageId: stage.id,
-                            }))
-                        )
+                              type: 'mandat-sepa'
+                            });
+                          }
+                          return files;
+                        });
+
                         if (allFiles.length === 0) {
                           return <div className="text-sm text-gray-400">Aucun fichier uploadé pour ce projet.</div>
                         }
@@ -590,7 +665,7 @@ export default function TableauDeBordAdmin() {
                                   <span className="text-xs text-gray-500 border px-2 py-0.5 rounded bg-gray-100">{ext}</span>
                                   <span className="text-xs text-gray-400 ml-2">Étape : {file.stageName}</span>
                                   <a
-                                    href={`/api/projects/${selectedProject._id}/cahier-des-charges/file?fileId=${file.fileId}`}
+                                    href={`/api/projects/${selectedProject._id}/${file.type === 'mandat-sepa' ? 'mandat-sepa' : 'cahier-des-charges/file'}?fileId=${file.fileId}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="ml-auto"
@@ -604,14 +679,27 @@ export default function TableauDeBordAdmin() {
                                     title="Supprimer le fichier"
                                     onClick={async () => {
                                       if (!window.confirm('Supprimer ce fichier ?')) return;
-                                      await fetch(`/api/projects/${selectedProject._id}/cahier-des-charges/file?fileId=${file.fileId}`, {
-                                        method: 'DELETE',
-                                      });
-                                      // Recharge les projets pour mettre à jour la liste
-                                      const res = await fetch('/api/projects');
-                                      const data = await res.json();
-                                      setProjects(data);
-                                      setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
+                                      try {
+                                        if (file.type === 'mandat-sepa') {
+                                          // Supprimer le fichier du mandat SEPA
+                                          await fetch(`/api/projects/${selectedProject._id}/mandat-sepa?fileId=${file.fileId}`, {
+                                            method: 'DELETE',
+                                          });
+                                        } else {
+                                          // Supprimer le fichier du cahier des charges
+                                          await fetch(`/api/projects/${selectedProject._id}/cahier-des-charges/file?fileId=${file.fileId}`, {
+                                            method: 'DELETE',
+                                          });
+                                        }
+                                        // Recharge les projets pour mettre à jour la liste
+                                        const res = await fetch('/api/projects');
+                                        const data = await res.json();
+                                        setProjects(data);
+                                        setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
+                                      } catch (error) {
+                                        console.error('Erreur lors de la suppression:', error);
+                                        alert('Une erreur est survenue lors de la suppression du fichier');
+                                      }
                                     }}
                                   >
                                     <Trash2 className="h-4 w-4" />
@@ -961,36 +1049,90 @@ export default function TableauDeBordAdmin() {
                                         </div>
                                       </div>
                                       {/* Champ URL Mandat SEPA */}
-                                      <div>
-                                        <label className="block text-xs font-medium text-brand-dark mb-1">Lien de signature du mandat SEPA</label>
-                                        <div className="flex gap-2">
+                                      <div className="mt-4">
+                                        <label className="block text-xs font-medium text-brand-dark mb-1">Mandat SEPA</label>
+                                        <div className="flex gap-2 items-center">
                                           <input
-                                            type="url"
-                                            className="flex-1 border rounded px-2 py-1 text-sm truncate"
-                                            placeholder="https://lien-mandat-sepa..."
-                                            value={stage.signatureUrl || ''}
-                                            onChange={e => handleSignatureUrlChange(e.target.value, 5)}
-                                            style={{ minWidth: 0 }}
-                                          />
-                                          <Button
-                                            variant="outline"
-                                            className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
-                                            onClick={async () => {
-                                              await handleSignatureUrlChange(stage.signatureUrl || '', 5);
-                                              if (typeof window !== 'undefined') {
-                                                window.dispatchEvent(new CustomEvent('devis-url-saved'));
-                                              }
+                                            type="file"
+                                            accept="application/pdf"
+                                            id={`mandat-sepa-upload-${selectedProject._id}`}
+                                            style={{ display: "none" }}
+                                            onChange={async (e) => {
+                                              if (!e.target.files || e.target.files.length === 0) return;
+                                              const file = e.target.files[0];
+                                              const formData = new FormData();
+                                              formData.append("file", file);
+                                              formData.append("stageId", "5"); // Ajout pour cibler l'étape 5
+                                              await fetch(`/api/projects/${selectedProject._id}/mandat-sepa/upload`, {
+                                                method: "POST",
+                                                body: formData,
+                                              });
+                                              // Recharge les projets
+                                              const res = await fetch("/api/projects");
+                                              const data = await res.json();
+                                              setProjects(data);
+                                              setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
                                             }}
-                                          >
-                                            Enregistrer
-                                          </Button>
-                                        </div>
-                                        {stage.signatureUrl && (
-                                          <div className="mt-1 text-xs text-brand-blue break-all max-w-full">
-                                            Lien actuel : <a href={stage.signatureUrl} target="_blank" rel="noopener noreferrer" className="underline break-all max-w-full inline-block">{stage.signatureUrl}</a>
+                                          />
+                                          <div className="flex gap-2">
+                                            <Button
+                                              variant="outline"
+                                              className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                              onClick={() => document.getElementById(`mandat-sepa-upload-${selectedProject._id}`)?.click()}
+                                            >
+                                              Upload Mandat SEPA
+                                            </Button>
+                                            {stage.mandatSepaFile && (
+                                              <Button
+                                                variant="outline"
+                                                className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                                type="button"
+                                                onClick={() => setShowRibModal((prev: any) => ({ ...prev, [selectedProject._id + '-mandat']: true }))}
+                                              >
+                                                Voir le mandat
+                                              </Button>
+                                            )}
                                           </div>
-                                        )}
+                                        </div>
                                       </div>
+                                      {/* Modal d'aperçu du mandat SEPA */}
+                                      {showRibModal[selectedProject._id + '-mandat'] && (
+                                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                                          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full p-6 relative flex flex-col">
+                                            <button
+                                              className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
+                                              onClick={() => setShowRibModal((prev: any) => ({ ...prev, [selectedProject._id + '-mandat']: false }))}
+                                            >
+                                              <span className="sr-only">Fermer</span>
+                                              <X className="h-5 w-5" />
+                                            </button>
+                                            <h3 className="text-xl font-bold text-brand-dark mb-4">Aperçu du mandat SEPA</h3>
+                                            <div className="flex-1 min-h-[400px] flex flex-col items-center justify-center gap-4">
+                                              <iframe
+                                                src={`/api/projects/${selectedProject._id}/mandat-sepa/file?fileId=${stage.mandatSepaFile.fileId}`}
+                                                title="Aperçu mandat SEPA"
+                                                className="w-full h-[60vh] border rounded"
+                                                onError={(e) => {
+                                                  e.currentTarget.style.display = 'none';
+                                                  const fallback = document.getElementById('mandat-fallback-' + selectedProject._id);
+                                                  if (fallback) fallback.style.display = 'block';
+                                                }}
+                                              />
+                                              <div id={`mandat-fallback-${selectedProject._id}`} style={{ display: 'none' }}>
+                                                <p className="text-sm text-gray-500 mb-2">Impossible d'afficher le PDF dans le navigateur. Vous pouvez le télécharger&nbsp;:</p>
+                                                <a
+                                                  href={`/api/projects/${selectedProject._id}/mandat-sepa/file?fileId=${stage.mandatSepaFile.fileId}`}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="underline text-brand-blue"
+                                                >
+                                                  Télécharger le mandat SEPA
+                                                </a>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )}
                                       {/* Champ URL Paiement en ligne */}
                                       <div>
                                         <label className="block text-xs font-medium text-brand-dark mb-1">Lien de paiement en ligne</label>
@@ -1022,6 +1164,92 @@ export default function TableauDeBordAdmin() {
                                           </div>
                                         )}
                                       </div>
+                                      <DevisUrlToast />
+                                    </div>
+                                  )}
+                                  {/* Affichage du champ logoBrandingUrl SEULEMENT si l'étape Logo/Branding est ouverte */}
+                                  {stage.name.toLowerCase().includes("logo") && openedStageId === stage.id && (
+                                    <>
+                                      <div className="mt-2">
+                                        <label className="block text-xs font-medium text-brand-dark mb-1">Lien logo/branding</label>
+                                        <div className="flex gap-2">
+                                          <input
+                                            type="url"
+                                            className="flex-1 border rounded px-2 py-1 text-sm truncate"
+                                            placeholder="https://..."
+                                            value={stage.logoBrandingUrl || ''}
+                                            onChange={e => handleLogoBrandingUrlChange(e.target.value, stage.id)}
+                                            style={{ minWidth: 0 }}
+                                          />
+                                          <Button
+                                            variant="outline"
+                                            className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                            onClick={async () => {
+                                              await handleLogoBrandingUrlChange(stage.logoBrandingUrl || '', stage.id);
+                                              if (typeof window !== 'undefined') {
+                                                window.dispatchEvent(new CustomEvent('devis-url-saved'));
+                                              }
+                                            }}
+                                          >
+                                            Enregistrer
+                                          </Button>
+                                        </div>
+                                        {stage.logoBrandingUrl && (
+                                          <div className="mt-1 text-xs text-brand-blue break-all max-w-full">
+                                            Lien actuel : <a href={stage.logoBrandingUrl} target="_blank" rel="noopener noreferrer" className="underline break-all max-w-full inline-block">{stage.logoBrandingUrl}</a>
+                                          </div>
+                                        )}
+                                        <DevisUrlToast />
+                                      </div>
+                                      {/* Encadré spécial commentaires client pour logo/branding */}
+                                      {stage.comments && stage.comments.length > 0 && (
+                                        <div className="mt-4 p-3 border-2 border-brand-yellow bg-yellow-50 rounded">
+                                          <div className="font-semibold text-brand-dark mb-2">Commentaires client sur le logo/branding :</div>
+                                          <ul className="space-y-2">
+                                            {stage.comments.map((comment: any, idx: number) => (
+                                              <li key={idx} className="text-sm text-gray-700 bg-white rounded p-2 border">
+                                                {comment.text}
+                                                {comment.createdAt && (
+                                                  <span className="block text-xs text-gray-400 mt-1">{new Date(comment.createdAt).toLocaleString('fr-FR')}</span>
+                                                )}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                  {/* Affichage du champ formUrl SEULEMENT si l'étape Copyrighting est ouverte */}
+                                  {stage.name.toLowerCase().includes("copyrighting") && openedStageId === stage.id && (
+                                    <div className="mt-2">
+                                      <label className="block text-xs font-medium text-brand-dark mb-1">Lien du formulaire à remplir</label>
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="url"
+                                          className="flex-1 border rounded px-2 py-1 text-sm truncate"
+                                          placeholder="https://..."
+                                          value={stage.formUrl || ''}
+                                          onChange={e => handleFormUrlChange(e.target.value, stage.id)}
+                                          style={{ minWidth: 0 }}
+                                        />
+                                        <Button
+                                          variant="outline"
+                                          className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                          onClick={async () => {
+                                            await handleFormUrlChange(stage.formUrl || '', stage.id);
+                                            if (typeof window !== 'undefined') {
+                                              window.dispatchEvent(new CustomEvent('devis-url-saved'));
+                                            }
+                                          }}
+                                        >
+                                          Enregistrer
+                                        </Button>
+                                      </div>
+                                      {stage.formUrl && (
+                                        <div className="mt-1 text-xs text-brand-blue break-all max-w-full">
+                                          Lien actuel : <a href={stage.formUrl} target="_blank" rel="noopener noreferrer" className="underline break-all max-w-full inline-block">{stage.formUrl}</a>
+                                        </div>
+                                      )}
                                       <DevisUrlToast />
                                     </div>
                                   )}
