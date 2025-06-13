@@ -33,6 +33,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   await client.connect()
   const db = client.db(dbName)
   const collection = db.collection("projects")
-  const project = await collection.findOne({ _id: new ObjectId(params.id) })
+  const { id } = await Promise.resolve(params)
+  const project = await collection.findOne({ _id: new ObjectId(id) })
   return NextResponse.json(project)
 }

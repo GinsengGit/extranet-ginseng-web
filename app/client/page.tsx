@@ -21,7 +21,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import { useRouter } from "next/navigation"
+import { useRouter, useParams } from "next/navigation"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 // Remplace cette variable par l'email du client connecté (ex: via session)
 import { useUser } from "../../context/UserContext"
@@ -29,6 +30,8 @@ import { useUser } from "../../context/UserContext"
 export default function TableauDeBordClient() {
   const { user, isLoading } = useUser()
   const router = useRouter()
+  const params = useParams()
+  const projectId = params?.id as string
   const [projects, setProjects] = useState<any[]>([])
   const [selectedStage, setSelectedStage] = useState<any | null>(null)
   const [showAddStageModal, setShowAddStageModal] = useState(false)
@@ -40,6 +43,10 @@ export default function TableauDeBordClient() {
   const [showRibModal, setShowRibModal] = useState<{ [key: string]: boolean }>({})
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const [project, setProject] = useState<any>(null)
+  const [showDevisModal, setShowDevisModal] = useState<{ [key: string]: boolean }>({})
+  const [showMandatModal, setShowMandatModal] = useState<{ [key: string]: boolean }>({})
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (isLoading) return;
@@ -56,6 +63,12 @@ export default function TableauDeBordClient() {
       .finally(() => setLoading(false))
   }, [user, isLoading])
 
+  useEffect(() => {
+    if (projectId) {
+      fetchProjectData();
+    }
+  }, [projectId]);
+
   if (isLoading || user === null || loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white">
@@ -63,6 +76,81 @@ export default function TableauDeBordClient() {
       </div>
     )
   }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0] || !projects[0]) return;
+
+    const file = e.target.files[0];
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch(`/api/projects/${projects[0]._id}/general`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Erreur lors de l'upload");
+      }
+
+      // Recharge le projet
+      const res = await fetch(`/api/projects/${projects[0]._id}`);
+      const data = await res.json();
+      setProjects(data);
+    } catch (error) {
+      console.error("Erreur lors de l'upload:", error);
+      alert("Erreur lors de l'upload du fichier");
+    }
+  };
+
+  const fetchProjectData = async () => {
+    if (!projectId) return;
+    
+    try {
+      const res = await fetch(`/api/projects/${projectId}`);
+      if (!res.ok) throw new Error("Erreur lors de la récupération du projet");
+      const data = await res.json();
+      
+      // Récupérer les fichiers pour chaque étape
+      const stagesWithFiles = await Promise.all(
+        data.stages.map(async (stage: any) => {
+          // Récupérer le cahier des charges (RIB)
+          if (stage.cahierDesChargesFiles && stage.cahierDesChargesFiles.length > 0) {
+            const ribRes = await fetch(`/api/projects/${projectId}/cahier-des-charges/file?fileId=${stage.cahierDesChargesFiles[0].fileId}`);
+            if (ribRes.ok) {
+              stage.ribUrl = await ribRes.text();
+            }
+          }
+
+          // Récupérer le mandat SEPA
+          if (stage.mandatSepaFile && stage.mandatSepaFile.fileId) {
+            const mandatRes = await fetch(`/api/projects/${projectId}/mandat-sepa/file?fileId=${stage.mandatSepaFile.fileId}`);
+            if (mandatRes.ok) {
+              stage.mandatSepaUrl = await mandatRes.text();
+            }
+          }
+
+          // Récupérer le devis
+          if (stage.devisFiles && stage.devisFiles.length > 0) {
+            const devisRes = await fetch(`/api/projects/${projectId}/devis/file?fileId=${stage.devisFiles[0].fileId}`);
+            if (devisRes.ok) {
+              stage.devisUrl = await devisRes.text();
+            }
+          }
+
+          return stage;
+        })
+      );
+
+      setProject({ ...data, stages: stagesWithFiles });
+      setLoading(false);
+    } catch (error) {
+      console.error("Erreur:", error);
+      setError("Une erreur est survenue lors du chargement du projet");
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
@@ -289,32 +377,17 @@ export default function TableauDeBordClient() {
                           {mainStages.map((stage: any) => {
                             // Affichage spécial pour l'upload
                             if (stage && stage.name && stage.name.toLowerCase().includes("upload de fichiers")) {
-                              // Elle est accessible si toutes les étapes précédentes sont terminées (avant upload)
+                              // Elle est accessible si toutes les étapes précédentes sont terminées
                               const prevStages = project.stages.filter((s: any) => s.id < stage.id);
                               const canUpload = prevStages.every((s: any) => s.status === "terminé");
-                              if (!canUpload) {
+
                                 return (
                                   <Card key={stage.id}
-                                    className={`border border-brand-blue shadow-md bg-blue-50 opacity-70`}>
+                                  className={`border border-brand-blue shadow-md bg-blue-50 ${!canUpload ? 'opacity-70' : ''} ${stage.status === 'en cours' ? 'ring-2 ring-brand-yellow/50' : ''}`}>
                                     <CardHeader className="pb-2">
                                       <div className="flex items-center justify-between">
                                         <CardTitle className="text-lg text-brand-dark">{stage.name}</CardTitle>
-                                        <LockIcon className="h-4 w-4 text-gray-400" />
-                                      </div>
-                                      <CardDescription>
-                                        {stage.status === "terminé" ? "Étape terminée" : "Verrouillé"}
-                                      </CardDescription>
-                                    </CardHeader>
-                                  </Card>
-                                );
-                              }
-                              return (
-                                <Card key={stage.id}
-                                  className={`border border-brand-blue shadow-md bg-blue-50 ${stage.status === 'verrouillé' ? 'opacity-70' : ''} ${stage.status === 'en cours' ? 'ring-2 ring-brand-yellow/50' : ''}`}>
-                                  <CardHeader className="pb-2">
-                                    <div className="flex items-center justify-between">
-                                      <CardTitle className="text-lg text-brand-dark">{stage.name}</CardTitle>
-                                      {stage.status === "verrouillé" ? (
+                                      {!canUpload ? (
                                         <LockIcon className="h-4 w-4 text-gray-400" />
                                       ) : stage.status === "terminé" ? (
                                         <CheckCircle className="h-4 w-4 text-green-500" />
@@ -327,12 +400,15 @@ export default function TableauDeBordClient() {
                                         <>Terminé le {new Date(stage.date).toLocaleDateString("fr-FR")}</>
                                       ) : stage.status === "en cours" ? (
                                         <>En cours depuis le {new Date(stage.date).toLocaleDateString("fr-FR")}</>
+                                      ) : !canUpload ? (
+                                        <>Étapes précédentes en attente de validation</>
                                       ) : (
                                         <>Débloqué</>
                                       )}
                                     </CardDescription>
                                   </CardHeader>
                                   <CardContent>
+                                    {canUpload && (
                                     <div className="flex flex-col md:flex-row md:items-center gap-4 mb-2">
                                       <label htmlFor={`file-upload-${project._id}-${stage.id}`} className="inline-flex items-center px-4 py-2 bg-brand-blue text-white rounded cursor-pointer hover:bg-brand-yellow hover:text-brand-dark transition-colors">
                                         <Upload className="mr-2 h-5 w-5" />
@@ -346,7 +422,7 @@ export default function TableauDeBordClient() {
                                             if (!e.target.files || e.target.files.length === 0) return;
                                             setSelectedFile(e.target.files[0]);
                                           }}
-                                          disabled={isUploading || stage.status === "terminé"}
+                                            disabled={isUploading}
                                         />
                                       </label>
                                       {selectedFile && (
@@ -354,7 +430,7 @@ export default function TableauDeBordClient() {
                                       )}
                                       <Button
                                         className="bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
-                                        disabled={!selectedFile || isUploading || stage.status === "terminé"}
+                                          disabled={!selectedFile || isUploading}
                                         onClick={async () => {
                                           if (!selectedFile) return;
                                           setIsUploading(true);
@@ -377,59 +453,78 @@ export default function TableauDeBordClient() {
                                         {isUploading ? "Upload en cours..." : "Uploader"}
                                       </Button>
                                     </div>
-                                    <div className="text-xs text-gray-500 mb-2">Formats acceptés : PDF, DOC, DOCX, XLS, XLSX, JPG, JPEG, PNG</div>
-                                    {/* Liste des fichiers uploadés pour cette étape */}
-                                    {stage.cahierDesChargesFiles && stage.cahierDesChargesFiles.length > 0 ? (
-                                      <ul className="mt-2 space-y-2">
-                                        {stage.cahierDesChargesFiles.map((file: any) => (
-                                          <li key={file.fileId} className="flex items-center justify-between gap-2">
-                                            <div className="flex items-center gap-2">
-                                              <a
-                                                href={`/api/projects/${project._id}/cahier-des-charges/file?fileId=${file.fileId}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="underline text-brand-blue"
-                                              >
-                                                {file.fileName || "Fichier"}
-                                              </a>
-                                            </div>
-                                            {stage.status !== "terminé" && (
-                                              <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                onClick={async () => {
-                                                  if (confirm("Êtes-vous sûr de vouloir supprimer ce fichier ?")) {
-                                                    try {
-                                                      await fetch(`/api/projects/${project._id}/cahier-des-charges/file?fileId=${file.fileId}`, {
-                                                        method: "DELETE",
-                                                      });
-                                                      // Recharge les projets pour mettre à jour la liste des fichiers
-                                                      const res = await fetch(`/api/projects?clientEmail=${encodeURIComponent(user.email)}`);
-                                                      const data = await res.json();
-                                                      setProjects(data);
-                                                    } catch (error) {
-                                                      console.error("Erreur lors de la suppression du fichier:", error);
-                                                      alert("Une erreur est survenue lors de la suppression du fichier.");
-                                                    }
-                                                  }
-                                                }}
-                                              >
-                                                <X className="h-4 w-4" />
-                                              </Button>
-                                            )}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    ) : (
-                                      <div className="text-xs text-gray-400">Aucun fichier uploadé pour cette étape.</div>
                                     )}
                                   </CardContent>
                                 </Card>
                               );
                             }
+                            // Affichage spécial pour le paiement final
+                            else if (stage && stage.name && stage.name.toLowerCase().includes("paiement final")) {
+                              return (
+                                <Card key={stage.id} className={`border ${stage.status === "en_cours" ? "border-brand-blue shadow-md bg-blue-50" : "border-gray-200"} ${stage.status === "terminé" ? "bg-green-50" : ""}`}>
+                                  <CardHeader className="pb-2">
+                                    <div className="flex items-center justify-between">
+                                      <CardTitle className="text-lg text-brand-dark">{stage.name}</CardTitle>
+                                      {stage.status === "terminé" ? (
+                                        <CheckCircle className="h-4 w-4 text-green-500" />
+                                      ) : (
+                                        <Clock className="h-4 w-4 text-brand-blue" />
+                                      )}
+                                            </div>
+                                    <CardDescription>
+                                      {stage.status === "terminé" ? (
+                                        <>Terminé le {new Date(stage.date).toLocaleDateString("fr-FR")}</>
+                                      ) : (
+                                        <>En attente de paiement</>
+                                      )}
+                                    </CardDescription>
+                                  </CardHeader>
+                                  <CardContent>
+                                    {stage.status === "en_cours" && (
+                                      <div className="flex flex-col gap-4">
+                                        {/* Boutons d'action */}
+                                        <div className="flex flex-wrap gap-2">
+                                          {stage.cahierDesChargesFiles && stage.cahierDesChargesFiles.length > 0 && (
+                                              <Button
+                                              variant="outline"
+                                              className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                              onClick={() => setShowRibModal((prev: any) => ({ ...prev, [project._id]: true }))}
+                                              >
+                                              Voir le RIB
+                                              </Button>
+                                            )}
+                                          {stage.mandatSepaFile && (
+                                            <Button
+                                              variant="outline"
+                                              className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                              onClick={() => setShowRibModal((prev: any) => ({ ...prev, [project._id + '-mandat']: true }))}
+                                            >
+                                              Voir le mandat SEPA
+                                            </Button>
+                                          )}
+                                          {stage.paiementUrl && (
+                                            <Button
+                                              variant="default"
+                                              className="bg-brand-blue text-white hover:bg-brand-blue/90"
+                                              onClick={() => window.open(stage.paiementUrl, "_blank")}
+                                            >
+                                              Payer en ligne
+                                            </Button>
+                                          )}
+                                        </div>
 
-                            // Affichage normal pour les autres étapes
+                                        {/* Message d'information */}
+                                        <p className="text-sm text-gray-600">
+                                          Pour effectuer le paiement final, vous pouvez soit utiliser le lien de paiement en ligne ci-dessus, soit effectuer un virement bancaire en utilisant le RIB fourni.
+                                        </p>
+                                      </div>
+                                    )}
+                                  </CardContent>
+                                </Card>
+                              );
+                            }
+                            // Affichage standard pour les autres étapes
+                            else {
                             return (
                               <Card
                                 key={stage.id}
@@ -471,7 +566,10 @@ export default function TableauDeBordClient() {
                                   )}
 
                                   {/* Etape Devis : bouton Voir le devis */}
-                                  {stage.name.toLowerCase().includes("devis") && stage.devisUrl && stage.status !== "terminé" && (
+                                    {stage.name.toLowerCase().includes("devis") && stage.status !== "terminé" && (
+                                      <div className="mt-2">
+                                        {/* Bouton pour voir le devis */}
+                                        {stage.devisUrl && (
                                     <Button
                                       variant="outline"
                                       className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10 mb-2"
@@ -479,6 +577,30 @@ export default function TableauDeBordClient() {
                                     >
                                       Voir le devis
                                     </Button>
+                                        )}
+                                        
+                                        {/* Liste des fichiers de devis */}
+                                        {project.devisFiles && project.devisFiles.length > 0 ? (
+                                          <ul className="mt-2 space-y-2">
+                                            {project.devisFiles.map((file: any) => (
+                                              <li key={file.fileId} className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2">
+                                                  <a
+                                                    href={file.filePath}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="underline text-brand-blue"
+                                                  >
+                                                    {file.fileName || "Fichier"}
+                                                  </a>
+                                                </div>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        ) : !stage.devisUrl && (
+                                          <div className="text-xs text-gray-400">Aucun devis disponible.</div>
+                                        )}
+                                      </div>
                                   )}
 
                                   {/* Etape Logo/Branding : bouton Voir le logo/branding */}
@@ -492,19 +614,26 @@ export default function TableauDeBordClient() {
                                     </Button>
                                   )}
 
-                                  {/* Etape Copyrighting : formulaire intégré */}
+                                  {/* Etape Figma : bouton Voir l'aperçu Figma */}
+                                  {stage.name.toLowerCase().includes("figma") && stage.figmaUrl && stage.status !== "terminé" && (
+                                    <Button
+                                      variant="outline"
+                                      className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10 mb-2"
+                                      onClick={() => window.open(stage.figmaUrl, '_blank')}
+                                    >
+                                      Voir l'aperçu Figma
+                                    </Button>
+                                  )}
+
+                                  {/* Etape Copyrighting : bouton pour accéder au formulaire dédié */}
                                   {stage.name.toLowerCase().includes("copyrighting") && stage.status !== "terminé" && (
-                                    <CopyrightingForm
-                                      projectId={project._id}
-                                      stageId={stage.id}
-                                      initialData={stage.copyrightingAnswers}
-                                      onSubmitted={async () => {
-                                        // Recharge les projets pour afficher la confirmation
-                                        const res = await fetch(`/api/projects?clientEmail=${encodeURIComponent(user.email)}`);
-                                        const data = await res.json();
-                                        setProjects(data);
-                                      }}
-                                    />
+                                    <Button
+                                      variant="outline"
+                                      className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10 mb-2"
+                                      onClick={() => window.location.href = `/client/projects/${project._id}/stages/${stage.id}/copyrighting-form`}
+                                    >
+                                      Remplir le formulaire
+                                    </Button>
                                   )}
 
                                   {/* Bouton Uploader un fichier pour l'étape Cahier des charges */}
@@ -604,7 +733,8 @@ export default function TableauDeBordClient() {
                                     </div>
                                   )}
 
-                                  {stage.id === 5 && stage.status !== "terminé" && (
+                                    {/* Etape Paiement */}
+                                    {stage.name.toLowerCase() === "paiement" && stage.status !== "terminé" && (
                                     <div className="mt-2 flex flex-col gap-2">
                                       {/* Bouton voir RIB si fichier présent */}
                                       {stage.cahierDesChargesFiles && stage.cahierDesChargesFiles.length > 0 && (
@@ -629,17 +759,19 @@ export default function TableauDeBordClient() {
                                         </Button>
                                       )}
                                       {/* Bouton payer en ligne */}
+                                        {stage.paiementUrl && (
                                       <Button
                                         className="w-full bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
-                                        onClick={() => window.open(stage.signatureUrl, '_blank')}
+                                            onClick={() => window.open(stage.paiementUrl, '_blank')}
                                       >
                                         Payer en ligne
                                       </Button>
+                                        )}
                                     </div>
                                   )}
 
                                   {/* Modal d'aperçu du RIB */}
-                                  {showRibModal[project._id + '-' + stage.id] && (
+                                    {showRibModal[project._id + '-' + stage.id] && stage.cahierDesChargesFiles && stage.cahierDesChargesFiles.length > 0 && (
                                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
                                       <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full p-6 relative flex flex-col">
                                         <button
@@ -657,11 +789,21 @@ export default function TableauDeBordClient() {
                                             className="w-full h-[60vh] border rounded"
                                             onError={(e) => {
                                               e.currentTarget.style.display = 'none';
-                                              const fallback = document.getElementById('rib-fallback-' + project._id + '-' + stage.id);
+                                                const fallback = document.getElementById('rib-fallback-' + project._id);
                                               if (fallback) fallback.style.display = 'block';
                                             }}
                                           />
-                                          <div id={`rib-fallback-${project._id + '-' + stage.id}`} style={{ display: 'none' }}>
+                                            <a
+                                              href={`/api/projects/${project._id}/cahier-des-charges/file?fileId=${stage.cahierDesChargesFiles[0].fileId}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="mt-2 flex items-center justify-center text-brand-blue hover:text-brand-yellow"
+                                              title="Télécharger le RIB"
+                                              download
+                                            >
+                                              <Download className="w-7 h-7" />
+                                            </a>
+                                            <div id={`rib-fallback-${project._id}`} style={{ display: 'none' }}>
                                             <p className="text-sm text-gray-500 mb-2">Impossible d'afficher le PDF dans le navigateur. Vous pouvez le télécharger&nbsp;:</p>
                                             <a
                                               href={`/api/projects/${project._id}/cahier-des-charges/file?fileId=${stage.cahierDesChargesFiles[0].fileId}`}
@@ -725,6 +867,206 @@ export default function TableauDeBordClient() {
                                       </div>
                                     </div>
                                   )}
+
+                                    {/* Etape Facture : bouton Voir la facture */}
+                                    {stage.name.toLowerCase().includes("facture") && stage.factureUrl && stage.status !== "terminé" && (
+                                      <div className="mt-2">
+                                        <div className="flex flex-col md:flex-row md:items-center gap-4 mb-2">
+                                          <label htmlFor={`file-upload-facture-${project._id}-${stage.id}`} className="inline-flex items-center px-4 py-2 bg-brand-blue text-white rounded cursor-pointer hover:bg-brand-yellow hover:text-brand-dark transition-colors">
+                                            <Upload className="mr-2 h-5 w-5" />
+                                            Choisir un fichier
+                                            <input
+                                              id={`file-upload-facture-${project._id}-${stage.id}`}
+                                              type="file"
+                                              accept=".pdf"
+                                              className="hidden"
+                                              onChange={e => {
+                                                if (!e.target.files || e.target.files.length === 0) return;
+                                                setSelectedFile(e.target.files[0]);
+                                              }}
+                                              disabled={isUploading || stage.status === "terminé"}
+                                            />
+                                          </label>
+                                          {selectedFile && (
+                                            <span className="text-sm text-brand-dark truncate max-w-xs">{selectedFile.name}</span>
+                                          )}
+                                          <Button
+                                            className="bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
+                                            disabled={!selectedFile || isUploading || stage.status === "terminé"}
+                                            onClick={async () => {
+                                              if (!selectedFile) return;
+                                              setIsUploading(true);
+                                              const formData = new FormData();
+                                              formData.append("file", selectedFile);
+                                              await fetch(`/api/projects/${project._id}/factures/upload`, {
+                                                method: "POST",
+                                                body: formData,
+                                              });
+                                              // Recharge les projets pour afficher le nouveau fichier
+                                              const res = await fetch(`/api/projects?clientEmail=${encodeURIComponent(user.email)}`);
+                                              const data = await res.json();
+                                              setProjects(data);
+                                              setSelectedFile(null);
+                                              setIsUploading(false);
+                                            }}
+                                          >
+                                            {isUploading ? "Upload en cours..." : "Uploader"}
+                                          </Button>
+                                        </div>
+                                        <div className="text-xs text-gray-500 mb-2">Format accepté : PDF</div>
+                                        {/* Liste des fichiers de factures */}
+                                        {project.facturesFiles && project.facturesFiles.length > 0 ? (
+                                          <ul className="mt-2 space-y-2">
+                                            {project.facturesFiles.map((file: any) => (
+                                              <li key={file.fileId} className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2">
+                                                  <a
+                                                    href={file.filePath}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="underline text-brand-blue"
+                                                  >
+                                                    {file.fileName || "Fichier"}
+                                                  </a>
+                                                </div>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        ) : (
+                                          <div className="text-xs text-gray-400">Aucun fichier de facture uploadé.</div>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* Section d'upload de fichiers - uniquement pour l'étape 7 */}
+                                    {stage.id === 7 && (
+                                      <div className="mt-4">
+                                        <label className="block text-xs font-medium text-brand-dark mb-1">Fichiers uploadés</label>
+                                        <div className="space-y-2">
+                                          {projects[0].generalFiles && projects[0].generalFiles.length > 0 ? (
+                                            projects[0].generalFiles.map((file: any, index: number) => (
+                                              <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                                <div className="flex items-center space-x-2">
+                                                  <FileText className="h-4 w-4 text-brand-blue" />
+                                                  <span className="text-sm">{file.fileName}</span>
+                                                </div>
+                                                <div className="flex items-center space-x-2">
+                                                  <a
+                                                    href={`/api/projects/${projects[0]._id}/general?fileId=${file.fileId}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs text-brand-blue hover:underline"
+                                                  >
+                                                    Voir
+                                                  </a>
+                                                </div>
+                                              </div>
+                                            ))
+                                          ) : (
+                                            <p className="text-sm text-gray-500">Aucun fichier uploadé</p>
+                                          )}
+                                        </div>
+                                        <div className="mt-4">
+                                          <Button
+                                            variant="outline"
+                                            className="border-brand-blue text-brand-blue hover:bg-brand-blue/10 relative overflow-hidden"
+                                            asChild
+                                          >
+                                            <label className="cursor-pointer w-full">
+                                              <FileText className="mr-2 h-4 w-4" />
+                                              Ajouter des documents
+                                              <input
+                                                type="file"
+                                                onChange={handleFileUpload}
+                                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                                style={{ width: "100%", height: "100%" }}
+                                              />
+                                            </label>
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Suppression des autres boutons d'upload */}
+                                    {stage.id !== 7 && stage.name.toLowerCase().includes("upload") && (
+                                      <div className="mt-4">
+                                        <label className="block text-xs font-medium text-brand-dark mb-1">Fichiers uploadés</label>
+                                        <div className="space-y-2">
+                                          {stage.files && stage.files.length > 0 ? (
+                                            stage.files.map((file: any, index: number) => (
+                                              <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                                <div className="flex items-center space-x-2">
+                                                  <FileText className="h-4 w-4 text-brand-blue" />
+                                                  <span className="text-sm">{file.fileName}</span>
+                                                </div>
+                                                <div className="flex items-center space-x-2">
+                                                  <a
+                                                    href={`/api/projects/${projects[0]._id}/files/${file.fileId}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs text-brand-blue hover:underline"
+                                                  >
+                                                    Voir
+                                                  </a>
+                                                </div>
+                                              </div>
+                                            ))
+                                          ) : (
+                                            <p className="text-sm text-gray-500">Aucun fichier uploadé</p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Validation finale */}
+                                    {stage.name.toLowerCase().includes("validation finale") && (
+                                      <div className="mt-4">
+                                        <Button
+                                          className="w-full bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400 disabled:cursor-not-allowed"
+                                          disabled={stage.status === "terminé" || !projects[0].stages.every((s: { status: string }, index: number) => 
+                                            index < projects[0].stages.findIndex((st: { name: string }) => st.name.toLowerCase().includes("validation finale")) 
+                                              ? s.status === "terminé" 
+                                              : true
+                                          )}
+                                          onClick={async () => {
+                                            try {
+                                              // Mise à jour du statut de l'étape
+                                              const response = await fetch(`/api/projects/${projects[0]._id}/stages/${stage.id}`, {
+                                                method: "PUT",
+                                                headers: {
+                                                  "Content-Type": "application/json",
+                                                },
+                                                body: JSON.stringify({
+                                                  status: "terminé",
+                                                  date: new Date().toISOString(),
+                                                }),
+                                              });
+
+                                              const data = await response.json();
+
+                                              if (!response.ok) {
+                                                throw new Error(data.message || "Erreur lors de la validation de l'étape");
+                                              }
+
+                                              // Recharge le projet
+                                              const res = await fetch(`/api/projects?clientEmail=${encodeURIComponent(user.email)}`);
+                                              if (!res.ok) {
+                                                throw new Error("Erreur lors du rechargement des données");
+                                              }
+                                              const updatedData = await res.json();
+                                              setProjects(updatedData);
+
+                                              alert("Étape validée avec succès !");
+                                            } catch (error) {
+                                              console.error("Erreur détaillée:", error);
+                                              alert(error instanceof Error ? error.message : "Une erreur est survenue lors de la validation de l'étape");
+                                            }
+                                          }}
+                                        >
+                                          {stage.status === "terminé" ? "Étape validée" : "Valider l'étape"}
+                                        </Button>
+                                      </div>
+                                    )}
                                 </CardContent>
                                 <CardFooter>
                                   {stage.status === "terminé" && (
@@ -744,6 +1086,7 @@ export default function TableauDeBordClient() {
                                 </CardFooter>
                               </Card>
                             );
+                            }
                           })}
                         </div>
                       </div>
@@ -778,10 +1121,10 @@ function CopyrightingForm({ projectId, stageId, initialData, onSubmitted }: { pr
   const [success, setSuccess] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value, type, checked } = e.target;
+    const { name, value, type } = e.target;
     setForm((prev: any) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
     }));
   };
 

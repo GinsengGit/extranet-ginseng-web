@@ -9,7 +9,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const { id: projectId } = await Promise.resolve(params)
     const formData = await req.formData()
     const file = formData.get("file") as File
+    const stageId = formData.get("stageId") as string
     if (!file) return NextResponse.json({ error: "Aucun fichier envoyé" }, { status: 400 })
+    if (!stageId) return NextResponse.json({ error: "StageId manquant" }, { status: 400 })
 
     // Vérifier que c'est bien un PDF
     if (file.type !== "application/pdf") {
@@ -41,7 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     // Mettre à jour le projet avec la référence au fichier
     await collection.updateOne(
-      { _id: new ObjectId(projectId), "stages.id": 5 },
+      { _id: new ObjectId(projectId), "stages.id": parseInt(stageId) },
       {
         $set: {
           "stages.$.mandatSepaFile": {

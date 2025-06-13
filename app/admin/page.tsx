@@ -25,7 +25,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -119,25 +119,6 @@ export default function TableauDeBordAdmin() {
     setUploadedFile(null)
   }
 
-  // Ajouter un commentaire (persistant)
-  const handleAddComment = async () => {
-    if (!newComment.trim() || !selectedProject) return
-    await fetch(`/api/projects/${selectedProject._id}/comments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user: "Utilisateur Admin",
-        text: newComment,
-      }),
-    })
-    // Recharge les projets pour afficher le nouveau commentaire
-    const res = await fetch("/api/projects")
-    const data = await res.json()
-    setProjects(data)
-    setSelectedProject(data.find((p: any) => p._id === selectedProject._id))
-    setNewComment("")
-  }
-
   // Marquer une étape comme terminée (persistant)
   const handleCompleteStage = async () => {
     if (!selectedProject) return
@@ -168,23 +149,32 @@ export default function TableauDeBordAdmin() {
 
   // Upload de fichier (persistant)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  if (e.target.files && e.target.files[0] && selectedProject) {
-    setUploadedFile(e.target.files[0])
-    const formData = new FormData()
-    formData.append("file", e.target.files[0])
+    if (!e.target.files || !e.target.files[0] || !selectedProject) return;
 
-    await fetch(`/api/projects/${selectedProject._id}/upload`, {
-      method: "POST",
-      body: formData,
-    })
+    const file = e.target.files[0];
+    const formData = new FormData();
+    formData.append("file", file);
 
-    // Recharge les projets pour afficher le nouveau fichier
-    const res = await fetch("/api/projects")
-    const data = await res.json()
-    setProjects(data)
-    setSelectedProject(data.find((p: any) => p._id === selectedProject._id))
-  }
-}
+    try {
+      const response = await fetch(`/api/projects/${selectedProject._id}/general`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Erreur lors de l'upload");
+      }
+
+      // Recharge les projets
+      const res = await fetch("/api/projects");
+      const data = await res.json();
+      setProjects(data);
+      setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
+    } catch (error) {
+      console.error("Erreur lors de l'upload:", error);
+      alert("Erreur lors de l'upload du fichier");
+    }
+  };
 
   // Supprimer un projet
   const handleDeleteProject = async () => {
@@ -308,34 +298,6 @@ export default function TableauDeBordAdmin() {
     setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
   };
 
-  // Fonction pour gérer le changement de l'URL de paiement
-  const handlePaiementUrlChange = async (newUrl: string, stageId: number) => {
-    if (!selectedProject) return;
-    setProjects((prev: any[]) => prev.map((p) =>
-      p._id === selectedProject._id
-        ? {
-          ...p,
-          stages: p.stages.map((s: any) =>
-            s.id === stageId ? { ...s, paiementUrl: newUrl } : s
-          ),
-        }
-        : p
-    ));
-    await fetch(`/api/projects/${selectedProject._id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        stages: selectedProject.stages.map((s: any) =>
-          s.id === stageId ? { ...s, paiementUrl: newUrl } : s
-        ),
-      }),
-    });
-    const res = await fetch("/api/projects");
-    const data = await res.json();
-    setProjects(data);
-    setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
-  };
-
   // Ajouter la fonction de sauvegarde du lien logo/branding
   const handleLogoBrandingUrlChange = async (newUrl: string, stageId: number) => {
     if (!selectedProject) return;
@@ -355,6 +317,62 @@ export default function TableauDeBordAdmin() {
       body: JSON.stringify({
         stages: selectedProject.stages.map((s: any) =>
           s.id === stageId ? { ...s, logoBrandingUrl: newUrl } : s
+        ),
+      }),
+    });
+    const res = await fetch("/api/projects");
+    const data = await res.json();
+    setProjects(data);
+    setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
+  };
+
+  // 1. Ajouter la fonction handleFigmaUrlChange
+  const handleFigmaUrlChange = async (newUrl: string, stageId: number) => {
+    if (!selectedProject) return;
+    setProjects((prev: any[]) => prev.map((p) =>
+      p._id === selectedProject._id
+        ? {
+            ...p,
+            stages: p.stages.map((s: any) =>
+              s.id === stageId ? { ...s, figmaUrl: newUrl } : s
+            ),
+          }
+        : p
+    ));
+    await fetch(`/api/projects/${selectedProject._id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stages: selectedProject.stages.map((s: any) =>
+          s.id === stageId ? { ...s, figmaUrl: newUrl } : s
+        ),
+      }),
+    });
+    const res = await fetch("/api/projects");
+    const data = await res.json();
+    setProjects(data);
+    setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
+  };
+
+  // Fonction pour gérer le changement de l'URL de paiement
+  const handlePaiementUrlChange = async (newUrl: string, stageId: number) => {
+    if (!selectedProject) return;
+    setProjects((prev: any[]) => prev.map((p) =>
+      p._id === selectedProject._id
+        ? {
+          ...p,
+          stages: p.stages.map((s: any) =>
+            s.id === stageId ? { ...s, paiementUrl: newUrl } : s
+          ),
+        }
+        : p
+    ));
+    await fetch(`/api/projects/${selectedProject._id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stages: selectedProject.stages.map((s: any) =>
+          s.id === stageId ? { ...s, paiementUrl: newUrl } : s
         ),
       }),
     });
@@ -456,7 +474,7 @@ export default function TableauDeBordAdmin() {
           <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6 relative">
             <button
               className="absolute top-3 right-3 text-gray-400 hover:text-gray-600"
-              onClick={handleCloseModal}
+              onClick={() => setShowModal(false)}
               aria-label="Fermer"
             >
               <X className="h-5 w-5" />
@@ -468,7 +486,7 @@ export default function TableauDeBordAdmin() {
                 <Input
                   name="name"
                   value={newProject.name}
-                  onChange={handleChangeNewProject}
+                  onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
                   placeholder="ex : Site marketing"
                 />
               </div>
@@ -477,7 +495,7 @@ export default function TableauDeBordAdmin() {
                 <Input
                   name="client"
                   value={newProject.client}
-                  onChange={handleChangeNewProject}
+                  onChange={(e) => setNewProject({ ...newProject, client: e.target.value })}
                   placeholder="ex : Ma Société"
                 />
               </div>
@@ -487,13 +505,30 @@ export default function TableauDeBordAdmin() {
                   name="clientEmail"
                   type="email"
                   value={newProject.clientEmail}
-                  onChange={handleChangeNewProject}
+                  onChange={(e) => setNewProject({ ...newProject, clientEmail: e.target.value })}
                   placeholder="ex : client@email.com"
                 />
               </div>
               <Button
                 className="w-full bg-brand-yellow text-brand-dark hover:bg-brand-yellow/90 mt-2"
-                onClick={handleCreateProject}
+                onClick={async () => {
+                  const project = {
+                    ...newProject,
+                    stages: defaultStages,
+                    currentStage: 1,
+                    createdAt: new Date().toISOString(),
+                  }
+                  await fetch("/api/projects", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(project),
+                  })
+                  const res = await fetch("/api/projects")
+                  const data = await res.json()
+                  setProjects(data)
+                  setShowModal(false)
+                  setNewProject({ name: "", client: "", clientEmail: "" })
+                }}
               >
                 <Plus className="mr-2 h-4 w-4" /> Créer le projet
               </Button>
@@ -543,7 +578,7 @@ export default function TableauDeBordAdmin() {
               </div>
               <Button
                 className="bg-brand-yellow text-brand-dark hover:bg-brand-yellow/90"
-                onClick={handleOpenModal}
+                onClick={() => setShowModal(true)}
               >
                 <Plus className="mr-2 h-4 w-4" />
                 Nouveau projet
@@ -571,7 +606,7 @@ export default function TableauDeBordAdmin() {
                       <Button
                         size="sm"
                         className="bg-brand-yellow text-brand-dark hover:bg-brand-yellow/90"
-                        onClick={handleOpenModal}
+                        onClick={() => setShowModal(true)}
                       >
                         <Plus className="mr-2 h-3 w-3" />
                         Ajouter un projet
@@ -652,6 +687,15 @@ export default function TableauDeBordAdmin() {
                           return files;
                         });
 
+                        // Ajoute les fichiers généraux uploadés via le bouton "Ajouter des documents"
+                        if (selectedProject.generalFiles) {
+                          allFiles.push(...selectedProject.generalFiles.map((file: any) => ({
+                            ...file,
+                            stageName: "Fichiers généraux",
+                            type: 'general'
+                          })));
+                        }
+
                         if (allFiles.length === 0) {
                           return <div className="text-sm text-gray-400">Aucun fichier uploadé pour ce projet.</div>
                         }
@@ -665,7 +709,7 @@ export default function TableauDeBordAdmin() {
                                   <span className="text-xs text-gray-500 border px-2 py-0.5 rounded bg-gray-100">{ext}</span>
                                   <span className="text-xs text-gray-400 ml-2">Étape : {file.stageName}</span>
                                   <a
-                                    href={`/api/projects/${selectedProject._id}/${file.type === 'mandat-sepa' ? 'mandat-sepa' : 'cahier-des-charges/file'}?fileId=${file.fileId}`}
+                                    href={`/api/projects/${selectedProject._id}/${file.type === 'mandat-sepa' ? 'mandat-sepa' : file.type === 'general' ? 'general' : 'cahier-des-charges/file'}?fileId=${file.fileId}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="ml-auto"
@@ -681,12 +725,14 @@ export default function TableauDeBordAdmin() {
                                       if (!window.confirm('Supprimer ce fichier ?')) return;
                                       try {
                                         if (file.type === 'mandat-sepa') {
-                                          // Supprimer le fichier du mandat SEPA
                                           await fetch(`/api/projects/${selectedProject._id}/mandat-sepa?fileId=${file.fileId}`, {
                                             method: 'DELETE',
                                           });
+                                        } else if (file.type === 'general') {
+                                          await fetch(`/api/projects/${selectedProject._id}/general?fileId=${file.fileId}`, {
+                                            method: 'DELETE',
+                                          });
                                         } else {
-                                          // Supprimer le fichier du cahier des charges
                                           await fetch(`/api/projects/${selectedProject._id}/cahier-des-charges/file?fileId=${file.fileId}`, {
                                             method: 'DELETE',
                                           });
@@ -999,6 +1045,149 @@ export default function TableauDeBordAdmin() {
                                       <DevisUrlToast />
                                     </div>
                                   )}
+                                  {/* Affichage du champ logoBrandingUrl SEULEMENT si l'étape Logo/Branding est ouverte */}
+                                  {stage.name.toLowerCase().includes("logo") && openedStageId === stage.id && (
+                                    <>
+                                      <div className="mt-2">
+                                        <label className="block text-xs font-medium text-brand-dark mb-1">Lien logo/branding</label>
+                                        <div className="flex gap-2">
+                                          <input
+                                            type="url"
+                                            className="flex-1 border rounded px-2 py-1 text-sm truncate"
+                                            placeholder="https://..."
+                                            value={stage.logoBrandingUrl || ''}
+                                            onChange={e => handleLogoBrandingUrlChange(e.target.value, stage.id)}
+                                            style={{ minWidth: 0 }}
+                                          />
+                                          <Button
+                                            variant="outline"
+                                            className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                            onClick={async () => {
+                                              await handleLogoBrandingUrlChange(stage.logoBrandingUrl || '', stage.id);
+                                              if (typeof window !== 'undefined') {
+                                                window.dispatchEvent(new CustomEvent('devis-url-saved'));
+                                              }
+                                            }}
+                                          >
+                                            Enregistrer
+                                          </Button>
+                                        </div>
+                                        {stage.logoBrandingUrl && (
+                                          <div className="mt-1 text-xs text-brand-blue break-all max-w-full">
+                                            Lien actuel : <a href={stage.logoBrandingUrl} target="_blank" rel="noopener noreferrer" className="underline break-all max-w-full inline-block">{stage.logoBrandingUrl}</a>
+                                          </div>
+                                        )}
+                                        <DevisUrlToast />
+                                      </div>
+                                      {/* Encadré spécial commentaires client pour logo/branding */}
+                                      {stage.comments && stage.comments.length > 0 && (
+                                        <div className="mt-4 p-3 border-2 border-brand-yellow bg-yellow-50 rounded">
+                                          <div className="font-semibold text-brand-dark mb-2">Commentaires client sur le logo/branding :</div>
+                                          <ul className="space-y-2">
+                                            {stage.comments.map((comment: any, idx: number) => (
+                                              <li key={idx} className="text-sm text-gray-700 bg-white rounded p-2 border">
+                                                {comment.text}
+                                                {comment.createdAt && (
+                                                  <span className="block text-xs text-gray-400 mt-1">{new Date(comment.createdAt).toLocaleString('fr-FR')}</span>
+                                                )}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                  {/* Etape Copyrighting */}
+                                  {stage.name.toLowerCase().includes("copyrighting") && stage.copyrightingAnswers && openedStageId === stage.id && (
+                                    <div className="mt-2">
+                                      <div className="flex justify-between items-center mb-2">
+                                        <div className="text-sm text-gray-600">
+                                          Réponses du formulaire :
+                                        </div>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => setOpenedStageId(null)}
+                                          className="text-gray-500 hover:text-gray-700"
+                                        >
+                                          <X className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                      <div className="space-y-2">
+                                        {Object.entries(stage.copyrightingAnswers).map(([key, value]) => {
+                                          if (key === 'submittedAt') return null;
+                                          return (
+                                            <div key={key} className="text-sm">
+                                              <span className="font-medium">{key} : </span>
+                                              <span>{typeof value === 'boolean' ? (value ? 'Oui' : 'Non') : String(value)}</span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {/* 2. Ajouter le bloc d'édition pour l'étape 10 (Aperçu Figma) */}
+                                  {stage.id === 10 && openedStageId === 10 && (
+                                    <div className="mt-2">
+                                      <label className="block text-xs font-medium text-brand-dark mb-1">Lien Aperçu Figma</label>
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="url"
+                                          className="flex-1 border rounded px-2 py-1 text-sm truncate"
+                                          placeholder="https://figma.com/file/..."
+                                          value={stage.figmaUrl || ''}
+                                          onChange={e => handleFigmaUrlChange(e.target.value, 10)}
+                                          style={{ minWidth: 0 }}
+                                        />
+                                        <Button
+                                          variant="outline"
+                                          className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                          onClick={async () => {
+                                            await handleFigmaUrlChange(stage.figmaUrl || '', 10);
+                                            if (typeof window !== 'undefined') {
+                                              window.dispatchEvent(new CustomEvent('devis-url-saved'));
+                                            }
+                                          }}
+                                        >
+                                          Enregistrer
+                                        </Button>
+                                      </div>
+                                      {stage.figmaUrl && (
+                                        <div className="mt-1 text-xs text-brand-blue break-all max-w-full">
+                                          Lien actuel : <a href={stage.figmaUrl} target="_blank" rel="noopener noreferrer" className="underline break-all max-w-full inline-block">{stage.figmaUrl}</a>
+                                        </div>
+                                      )}
+                                      <DevisUrlToast />
+                                    </div>
+                                  )}
+                                  {/* Paiement initial */}
+                                  {stage.name.toLowerCase().includes("paiement initial") && (
+                                    <div className="mt-4">
+                                      <div className="flex flex-col gap-2">
+                                        <label className="block text-xs font-medium text-brand-dark mb-1">
+                                          Lien de paiement
+                                        </label>
+                                        <div className="flex gap-2">
+                                          <input
+                                            type="text"
+                                            value={stage.paiementUrl || ""}
+                                            onChange={(e) => handlePaiementUrlChange(e.target.value, stage.id)}
+                                            placeholder="Entrez l'URL de paiement"
+                                            className="flex-1 px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                                          />
+                                          {stage.paiementUrl && (
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => window.open(stage.paiementUrl, "_blank")}
+                                            >
+                                              Voir le lien
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                   {/* Affichage du champ paiementUrl SEULEMENT si l'étape Paiement initial est ouverte */}
                                   {stage.id === 5 && openedStageId === 5 && (
                                     <div className="mt-2 space-y-4">
@@ -1095,165 +1284,88 @@ export default function TableauDeBordAdmin() {
                                           </div>
                                         </div>
                                       </div>
-                                      {/* Modal d'aperçu du mandat SEPA */}
-                                      {showRibModal[selectedProject._id + '-mandat'] && (
-                                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-                                          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full p-6 relative flex flex-col">
-                                            <button
-                                              className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
-                                              onClick={() => setShowRibModal((prev: any) => ({ ...prev, [selectedProject._id + '-mandat']: false }))}
+                                      {/* Champ URL de paiement */}
+                                      <div className="mt-4">
+                                        <label className="block text-xs font-medium text-brand-dark mb-1">
+                                          Lien de paiement
+                                        </label>
+                                        <div className="flex gap-2">
+                                          <input
+                                            type="text"
+                                            value={stage.paiementUrl || ""}
+                                            onChange={(e) => handlePaiementUrlChange(e.target.value, stage.id)}
+                                            placeholder="Entrez l'URL de paiement"
+                                            className="flex-1 px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                                          />
+                                          {stage.paiementUrl && (
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => window.open(stage.paiementUrl, "_blank")}
                                             >
-                                              <span className="sr-only">Fermer</span>
-                                              <X className="h-5 w-5" />
-                                            </button>
-                                            <h3 className="text-xl font-bold text-brand-dark mb-4">Aperçu du mandat SEPA</h3>
-                                            <div className="flex-1 min-h-[400px] flex flex-col items-center justify-center gap-4">
-                                              <iframe
-                                                src={`/api/projects/${selectedProject._id}/mandat-sepa/file?fileId=${stage.mandatSepaFile.fileId}`}
-                                                title="Aperçu mandat SEPA"
-                                                className="w-full h-[60vh] border rounded"
-                                                onError={(e) => {
-                                                  e.currentTarget.style.display = 'none';
-                                                  const fallback = document.getElementById('mandat-fallback-' + selectedProject._id);
-                                                  if (fallback) fallback.style.display = 'block';
-                                                }}
-                                              />
-                                              <div id={`mandat-fallback-${selectedProject._id}`} style={{ display: 'none' }}>
-                                                <p className="text-sm text-gray-500 mb-2">Impossible d'afficher le PDF dans le navigateur. Vous pouvez le télécharger&nbsp;:</p>
-                                                <a
-                                                  href={`/api/projects/${selectedProject._id}/mandat-sepa/file?fileId=${stage.mandatSepaFile.fileId}`}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="underline text-brand-blue"
-                                                >
-                                                  Télécharger le mandat SEPA
-                                                </a>
-                                              </div>
-                                            </div>
-                                          </div>
+                                              Voir le lien
+                                            </Button>
+                                          )}
                                         </div>
-                                      )}
-                                      {/* Champ URL Paiement en ligne */}
-                                      <div>
-                                        <label className="block text-xs font-medium text-brand-dark mb-1">Lien de paiement en ligne</label>
-                                        <div className="flex gap-2">
-                                          <input
-                                            type="url"
-                                            className="flex-1 border rounded px-2 py-1 text-sm truncate"
-                                            placeholder="https://lien-paiement..."
-                                            value={stage.paiementUrl || ''}
-                                            onChange={e => handlePaiementUrlChange(e.target.value, 5)}
-                                            style={{ minWidth: 0 }}
-                                          />
-                                          <Button
-                                            variant="outline"
-                                            className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
-                                            onClick={async () => {
-                                              await handlePaiementUrlChange(stage.paiementUrl || '', 5);
-                                              if (typeof window !== 'undefined') {
-                                                window.dispatchEvent(new CustomEvent('devis-url-saved'));
-                                              }
-                                            }}
-                                          >
-                                            Enregistrer
-                                          </Button>
-                                        </div>
-                                        {stage.paiementUrl && (
-                                          <div className="mt-1 text-xs text-brand-blue break-all max-w-full">
-                                            Lien actuel : <a href={stage.paiementUrl} target="_blank" rel="noopener noreferrer" className="underline break-all max-w-full inline-block">{stage.paiementUrl}</a>
-                                          </div>
-                                        )}
                                       </div>
-                                      <DevisUrlToast />
                                     </div>
                                   )}
-                                  {/* Affichage du champ logoBrandingUrl SEULEMENT si l'étape Logo/Branding est ouverte */}
-                                  {stage.name.toLowerCase().includes("logo") && openedStageId === stage.id && (
-                                    <>
-                                      <div className="mt-2">
-                                        <label className="block text-xs font-medium text-brand-dark mb-1">Lien logo/branding</label>
+                                  {/* Paiement final */}
+                                  {stage.name.toLowerCase().includes("paiement final") && (
+                                    <div className="mt-4">
+                                      <div className="flex flex-col gap-2">
+                                        <label className="block text-xs font-medium text-brand-dark mb-1">
+                                          Lien de paiement final
+                                        </label>
                                         <div className="flex gap-2">
                                           <input
-                                            type="url"
-                                            className="flex-1 border rounded px-2 py-1 text-sm truncate"
-                                            placeholder="https://..."
-                                            value={stage.logoBrandingUrl || ''}
-                                            onChange={e => handleLogoBrandingUrlChange(e.target.value, stage.id)}
-                                            style={{ minWidth: 0 }}
+                                            type="text"
+                                            value={stage.paiementUrl || ""}
+                                            onChange={(e) => handlePaiementUrlChange(e.target.value, stage.id)}
+                                            placeholder="Entrez l'URL de paiement final"
+                                            className="flex-1 px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-brand-blue"
                                           />
-                                          <Button
-                                            variant="outline"
-                                            className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
-                                            onClick={async () => {
-                                              await handleLogoBrandingUrlChange(stage.logoBrandingUrl || '', stage.id);
-                                              if (typeof window !== 'undefined') {
-                                                window.dispatchEvent(new CustomEvent('devis-url-saved'));
-                                              }
-                                            }}
-                                          >
-                                            Enregistrer
-                                          </Button>
+                                          {stage.paiementUrl && (
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => window.open(stage.paiementUrl, "_blank")}
+                                            >
+                                              Voir le lien
+                                            </Button>
+                                          )}
                                         </div>
-                                        {stage.logoBrandingUrl && (
-                                          <div className="mt-1 text-xs text-brand-blue break-all max-w-full">
-                                            Lien actuel : <a href={stage.logoBrandingUrl} target="_blank" rel="noopener noreferrer" className="underline break-all max-w-full inline-block">{stage.logoBrandingUrl}</a>
-                                          </div>
-                                        )}
-                                        <DevisUrlToast />
                                       </div>
-                                      {/* Encadré spécial commentaires client pour logo/branding */}
-                                      {stage.comments && stage.comments.length > 0 && (
-                                        <div className="mt-4 p-3 border-2 border-brand-yellow bg-yellow-50 rounded">
-                                          <div className="font-semibold text-brand-dark mb-2">Commentaires client sur le logo/branding :</div>
-                                          <ul className="space-y-2">
-                                            {stage.comments.map((comment: any, idx: number) => (
-                                              <li key={idx} className="text-sm text-gray-700 bg-white rounded p-2 border">
-                                                {comment.text}
-                                                {comment.createdAt && (
-                                                  <span className="block text-xs text-gray-400 mt-1">{new Date(comment.createdAt).toLocaleString('fr-FR')}</span>
-                                                )}
-                                              </li>
-                                            ))}
-                                          </ul>
-                                        </div>
-                                      )}
-                                    </>
-                                  )}
-                                  {/* Affichage du champ formUrl SEULEMENT si l'étape Copyrighting est ouverte */}
-                                  {stage.name.toLowerCase().includes("copyrighting") && openedStageId === stage.id && (
-                                    <div className="mt-2">
-                                      <label className="block text-xs font-medium text-brand-dark mb-1">Lien du formulaire à remplir</label>
-                                      <div className="flex gap-2">
-                                        <input
-                                          type="url"
-                                          className="flex-1 border rounded px-2 py-1 text-sm truncate"
-                                          placeholder="https://..."
-                                          value={stage.formUrl || ''}
-                                          onChange={e => handleFormUrlChange(e.target.value, stage.id)}
-                                          style={{ minWidth: 0 }}
-                                        />
-                                        <Button
-                                          variant="outline"
-                                          className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
-                                          onClick={async () => {
-                                            await handleFormUrlChange(stage.formUrl || '', stage.id);
-                                            if (typeof window !== 'undefined') {
-                                              window.dispatchEvent(new CustomEvent('devis-url-saved'));
-                                            }
-                                          }}
-                                        >
-                                          Enregistrer
-                                        </Button>
-                                      </div>
-                                      {stage.formUrl && (
-                                        <div className="mt-1 text-xs text-brand-blue break-all max-w-full">
-                                          Lien actuel : <a href={stage.formUrl} target="_blank" rel="noopener noreferrer" className="underline break-all max-w-full inline-block">{stage.formUrl}</a>
-                                        </div>
-                                      )}
-                                      <DevisUrlToast />
                                     </div>
                                   )}
-                                  {/* ...autres contenus d'étape si besoin... */}
+                                  {/* Paiement après validation finale */}
+                                  {stage.name.toLowerCase() === "paiement" && (
+                                    <div className="mt-4">
+                                      <div className="flex flex-col gap-2">
+                                        <label className="block text-xs font-medium text-brand-dark mb-1">
+                                          Lien de paiement
+                                        </label>
+                                        <div className="flex gap-2">
+                                          <input
+                                            type="text"
+                                            value={stage.paiementUrl || ""}
+                                            onChange={(e) => handlePaiementUrlChange(e.target.value, stage.id)}
+                                            placeholder="Entrez l'URL de paiement"
+                                            className="flex-1 px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                                          />
+                                          {stage.paiementUrl && (
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => window.open(stage.paiementUrl, "_blank")}
+                                            >
+                                              Voir le lien
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             ))}
@@ -1283,7 +1395,22 @@ export default function TableauDeBordAdmin() {
                               />
                             </div>
                             <Button
-                              onClick={handleAddComment}
+                              onClick={async () => {
+                                if (!newComment.trim()) return
+                                await fetch(`/api/projects/${selectedProject._id}/comments`, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    user: user.firstName,
+                                    text: newComment,
+                                  }),
+                                })
+                                const res = await fetch("/api/projects")
+                                const data = await res.json()
+                                setProjects(data)
+                                setSelectedProject(data.find((p: any) => p._id === selectedProject._id))
+                                setNewComment("")
+                              }}
                               className="w-full bg-brand-yellow text-brand-dark hover:bg-brand-yellow/90"
                             >
                               Ajouter le commentaire
@@ -1316,6 +1443,29 @@ export default function TableauDeBordAdmin() {
           </p>
         </div>
       </footer>
+
+      {/* Modal pour afficher le mandat SEPA */}
+      {selectedProject && selectedProject.stages && selectedProject.stages.map((stage: any) => (
+        stage.mandatSepaFile && showRibModal[selectedProject._id + '-mandat'] && (
+          <div key={stage.id} className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+            <div className="bg-white rounded-xl shadow-lg w-full max-w-4xl h-[80vh] p-6 relative">
+              <button
+                className="absolute top-3 right-3 text-gray-400 hover:text-gray-600"
+                onClick={() => setShowRibModal((prev: any) => ({ ...prev, [selectedProject._id + '-mandat']: false }))}
+                aria-label="Fermer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <h2 className="text-xl font-bold text-brand-dark mb-4">Mandat SEPA</h2>
+              <iframe
+                src={`/api/projects/${selectedProject._id}/mandat-sepa/file?fileId=${stage.mandatSepaFile.fileId}`}
+                className="w-full h-full border-0"
+                title="Mandat SEPA"
+              />
+            </div>
+          </div>
+        )
+      ))}
     </div>
   )
 }
