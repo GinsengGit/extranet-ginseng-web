@@ -38,6 +38,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { useUser } from "../../context/UserContext"
+import { Calendar } from "@/components/ui/calendar"
+import { format } from "date-fns"
+import { fr } from "date-fns/locale"
+import { GanttChart } from "@/components/gantt-chart"
 
 // Étapes par défaut pour un nouveau projet
 const defaultStages = [
@@ -92,6 +96,8 @@ export default function TableauDeBordAdmin() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [openedStageId, setOpenedStageId] = useState<number | null>(null)
   const [showRibModal, setShowRibModal] = useState<any>({})
+  const [selectedDate, setSelectedDate] = useState<Date>()
+  const [selectedTime, setSelectedTime] = useState<string>("")
 
   // Charger les projets depuis MongoDB Atlas
   useEffect(() => {
@@ -458,6 +464,67 @@ export default function TableauDeBordAdmin() {
     setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
   };
 
+  const handleOpenStage = async (stageId: number) => {
+    setOpenedStageId(stageId);
+    // Recharge les projets pour avoir les dernières réponses du formulaire
+    const res = await fetch("/api/projects");
+    const data = await res.json();
+    setProjects(data);
+    if (selectedProject) {
+      setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
+    }
+  };
+
+  const handleAddMeetingProposal = async (projectId: string) => {
+    if (!selectedDate || !selectedTime) {
+      alert("Veuillez sélectionner une date et une heure")
+      return
+    }
+
+    const dateTime = new Date(selectedDate)
+    const [hours, minutes] = selectedTime.split(":")
+    dateTime.setHours(parseInt(hours), parseInt(minutes))
+
+    console.log("Tentative d'ajout de rendez-vous:", {
+      projectId,
+      dateTime: dateTime.toISOString(),
+      selectedDate,
+      selectedTime
+    })
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/meeting-proposals`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dateTime: dateTime.toISOString() })
+      })
+
+      console.log("Réponse du serveur:", response.status)
+      const data = await response.json()
+      console.log("Données reçues:", data)
+      
+      if (!response.ok) {
+        throw new Error(data.error || "Erreur lors de l'ajout de la proposition")
+      }
+      
+      // Recharger les projets
+      const res = await fetch("/api/projects")
+      const projectsData = await res.json()
+      setProjects(projectsData)
+      setSelectedProject(projectsData.find((p: any) => p._id === projectId))
+      
+      // Réinitialiser les champs
+      setSelectedDate(undefined)
+      setSelectedTime("")
+
+      // Afficher un message de succès
+      alert("Rendez-vous ajouté avec succès")
+    } catch (error) {
+      console.error("Erreur détaillée:", error)
+      alert(error instanceof Error ? error.message : "Erreur lors de l'ajout de la proposition")
+    }
+  }
+
   if (isLoading || !user || user.role !== "admin") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white">
@@ -786,6 +853,13 @@ export default function TableauDeBordAdmin() {
                               Envoyer un email au client
                             </DropdownMenuItem>
                             <DropdownMenuItem
+                              className="text-gray-700 focus:text-brand-dark focus:bg-gray-50"
+                              onClick={() => setShowRibModal((prev: any) => ({ ...prev, [selectedProject._id + '-gantt']: true }))}
+                            >
+                              <FileText className="mr-2 h-4 w-4 text-brand-blue" />
+                              Voir le Gantt chart
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
                               className="text-red-600 focus:text-white focus:bg-red-600"
                               onClick={handleDeleteProject}
                             >
@@ -939,14 +1013,14 @@ export default function TableauDeBordAdmin() {
                                         ? "bg-brand-yellow/20 text-brand-dark"
                                         : "bg-gray-100 text-gray-400"
                                   } cursor-pointer`}
-                                  onClick={() => setOpenedStageId(openedStageId === stage.id ? null : stage.id)}
+                                  onClick={() => handleOpenStage(stage.id)}
                                   title="Afficher/Masquer les détails de l'étape"
                                 >
                                   {stage.id}
                                 </div>
                                 <div className="flex-1">
                                   <div className="flex items-center justify-between">
-                                    <h4 className="text-sm font-medium text-brand-dark cursor-pointer" onClick={() => setOpenedStageId(openedStageId === stage.id ? null : stage.id)}>{stage.name}</h4>
+                                    <h4 className="text-sm font-medium text-brand-dark cursor-pointer" onClick={() => handleOpenStage(stage.id)}>{stage.name}</h4>
                                     <Badge
                                       variant={
                                         stage.status === "terminé"
@@ -1107,7 +1181,7 @@ export default function TableauDeBordAdmin() {
                                         <Button
                                           variant="ghost"
                                           size="sm"
-                                          onClick={() => setOpenedStageId(null)}
+                                          onClick={() => handleOpenStage(null)}
                                           className="text-gray-500 hover:text-gray-700"
                                         >
                                           <X className="h-4 w-4" />
@@ -1123,6 +1197,34 @@ export default function TableauDeBordAdmin() {
                                             </div>
                                           );
                                         })}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {/* Gantt chart pour l'étape de développement */}
+                                  {stage.id === 14 && openedStageId === 14 && (
+                                    <div className="mt-4">
+                                      <div className="flex justify-between items-center mb-2">
+                                        <div className="text-sm font-medium text-brand-dark">
+                                          Planning de développement
+                                        </div>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => handleOpenStage(null)}
+                                          className="text-gray-500 hover:text-gray-700"
+                                        >
+                                          <X className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                      <div className="border rounded-lg p-4 bg-white">
+                                        <Button
+                                          variant="outline"
+                                          className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                          onClick={() => setShowRibModal((prev: any) => ({ ...prev, [selectedProject._id + '-gantt']: true }))}
+                                        >
+                                          <FileText className="mr-2 h-4 w-4" />
+                                          Accéder au planning de développement
+                                        </Button>
                                       </div>
                                     </div>
                                   )}
@@ -1311,29 +1413,127 @@ export default function TableauDeBordAdmin() {
                                     </div>
                                   )}
                                   {/* Paiement final */}
-                                  {stage.name.toLowerCase().includes("paiement final") && (
+                                  {stage.id === 16 && (
                                     <div className="mt-4">
                                       <div className="flex flex-col gap-2">
-                                        <label className="block text-xs font-medium text-brand-dark mb-1">
-                                          Lien de paiement final
-                                        </label>
-                                        <div className="flex gap-2">
-                                          <input
-                                            type="text"
-                                            value={stage.paiementUrl || ""}
-                                            onChange={(e) => handlePaiementUrlChange(e.target.value, stage.id)}
-                                            placeholder="Entrez l'URL de paiement final"
-                                            className="flex-1 px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-brand-blue"
-                                          />
-                                          {stage.paiementUrl && (
+                                        {/* Upload RIB */}
+                                        <div>
+                                          <label className="block text-xs font-medium text-brand-dark mb-1">Fichier RIB (PDF à fournir au client)</label>
+                                          <div className="flex gap-2 items-center">
+                                            <input
+                                              type="file"
+                                              accept="application/pdf"
+                                              id={`rib-upload-final-${selectedProject._id}`}
+                                              style={{ display: "none" }}
+                                              onChange={async (e) => {
+                                                if (!e.target.files || e.target.files.length === 0) return;
+                                                const file = e.target.files[0];
+                                                const formData = new FormData();
+                                                formData.append("file", file);
+                                                formData.append("stageId", stage.id.toString());
+                                                await fetch(`/api/projects/${selectedProject._id}/cahier-des-charges/upload`, {
+                                                  method: "POST",
+                                                  body: formData,
+                                                });
+                                                // Recharge les projets
+                                                const res = await fetch("/api/projects");
+                                                const data = await res.json();
+                                                setProjects(data);
+                                                setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
+                                              }}
+                                            />
                                             <Button
                                               variant="outline"
-                                              size="sm"
-                                              onClick={() => window.open(stage.paiementUrl, "_blank")}
+                                              className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                              onClick={() => document.getElementById(`rib-upload-final-${selectedProject._id}`)?.click()}
                                             >
-                                              Voir le lien
+                                              Upload RIB
                                             </Button>
-                                          )}
+                                            {/* Affichage du fichier RIB s'il existe */}
+                                            {stage.cahierDesChargesFiles && stage.cahierDesChargesFiles.length > 0 && (
+                                              <a
+                                                href={`/api/projects/${selectedProject._id}/cahier-des-charges/file?fileId=${stage.cahierDesChargesFiles[0].fileId}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="ml-2 text-xs underline text-brand-blue"
+                                              >
+                                                Voir le RIB
+                                              </a>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* Champ URL Mandat SEPA */}
+                                        <div className="mt-4">
+                                          <label className="block text-xs font-medium text-brand-dark mb-1">Mandat SEPA</label>
+                                          <div className="flex gap-2 items-center">
+                                            <input
+                                              type="file"
+                                              accept="application/pdf"
+                                              id={`mandat-sepa-upload-final-${selectedProject._id}`}
+                                              style={{ display: "none" }}
+                                              onChange={async (e) => {
+                                                if (!e.target.files || e.target.files.length === 0) return;
+                                                const file = e.target.files[0];
+                                                const formData = new FormData();
+                                                formData.append("file", file);
+                                                formData.append("stageId", stage.id.toString());
+                                                await fetch(`/api/projects/${selectedProject._id}/mandat-sepa/upload`, {
+                                                  method: "POST",
+                                                  body: formData,
+                                                });
+                                                // Recharge les projets
+                                                const res = await fetch("/api/projects");
+                                                const data = await res.json();
+                                                setProjects(data);
+                                                setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
+                                              }}
+                                            />
+                                            <div className="flex gap-2">
+                                              <Button
+                                                variant="outline"
+                                                className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                                onClick={() => document.getElementById(`mandat-sepa-upload-final-${selectedProject._id}`)?.click()}
+                                              >
+                                                Upload Mandat SEPA
+                                              </Button>
+                                              {stage.mandatSepaFile && (
+                                                <Button
+                                                  variant="outline"
+                                                  className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                                  type="button"
+                                                  onClick={() => setShowRibModal((prev: any) => ({ ...prev, [selectedProject._id + '-mandat-final']: true }))}
+                                                >
+                                                  Voir le mandat
+                                                </Button>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* Champ URL de paiement */}
+                                        <div className="mt-4">
+                                          <label className="block text-xs font-medium text-brand-dark mb-1">
+                                            Lien de paiement final
+                                          </label>
+                                          <div className="flex gap-2">
+                                            <input
+                                              type="text"
+                                              value={stage.paiementUrl || ""}
+                                              onChange={(e) => handlePaiementUrlChange(e.target.value, stage.id)}
+                                              placeholder="Entrez l'URL de paiement final"
+                                              className="flex-1 px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                                            />
+                                            {stage.paiementUrl && (
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => window.open(stage.paiementUrl, "_blank")}
+                                              >
+                                                Voir le lien
+                                              </Button>
+                                            )}
+                                          </div>
                                         </div>
                                       </div>
                                     </div>
@@ -1363,6 +1563,149 @@ export default function TableauDeBordAdmin() {
                                             </Button>
                                           )}
                                         </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {/* Préparer développement */}
+                                  {stage.name.toLowerCase().includes("préparer développement") && stage.preparerDevAnswers && openedStageId === stage.id && (
+                                    <div className="mt-2">
+                                      <div className="flex justify-between items-center mb-2">
+                                        <div className="text-sm text-gray-600">
+                                          Réponses du formulaire Préparer développement :
+                                        </div>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => handleOpenStage(null)}
+                                          className="text-gray-500 hover:text-gray-700"
+                                        >
+                                          <X className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                      <div className="space-y-2">
+                                        {Object.entries(stage.preparerDevAnswers).map(([key, value]) => {
+                                          if (key === 'submittedAt') return null;
+                                          return (
+                                            <div key={key} className="text-sm">
+                                              <span className="font-medium">{key} : </span>
+                                              <span>{typeof value === 'boolean' ? (value ? 'Oui' : 'Non') : String(value)}</span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {/* Proposer un rendez-vous */}
+                                  {stage.id === 1 && (
+                                    <div className="mt-4 space-y-4">
+                                      <div className="flex flex-col gap-4">
+                                        <div>
+                                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Proposer un rendez-vous
+                                          </label>
+                                          <div className="flex gap-4">
+                                            <div className="flex-1">
+                                              <Calendar
+                                                mode="single"
+                                                selected={selectedDate}
+                                                onSelect={setSelectedDate}
+                                                locale={fr}
+                                                className="rounded-md border"
+                                              />
+                                            </div>
+                                            <div className="flex-1">
+                                              <select
+                                                value={selectedTime}
+                                                onChange={(e) => setSelectedTime(e.target.value)}
+                                                className="w-full rounded-md border border-gray-300 px-3 py-2"
+                                              >
+                                                <option value="">Sélectionner une heure</option>
+                                                {Array.from({ length: 24 }).map((_, i) => (
+                                                  <option key={i} value={`${i.toString().padStart(2, "0")}:00`}>
+                                                    {`${i.toString().padStart(2, "0")}:00`}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                              <Button
+                                                onClick={() => handleAddMeetingProposal(selectedProject._id)}
+                                                className="mt-2 w-full"
+                                                disabled={!selectedDate || !selectedTime}
+                                              >
+                                                Proposer ce rendez-vous
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* Liste des propositions */}
+                                        {stage.meetingProposals && stage.meetingProposals.length > 0 && (
+                                          <div>
+                                            <h4 className="text-sm font-medium text-gray-700 mb-2">
+                                              Propositions de rendez-vous
+                                            </h4>
+                                            <div className="space-y-2">
+                                              {stage.meetingProposals.map((proposal: any) => (
+                                                <div
+                                                  key={proposal.id}
+                                                  className="flex items-center justify-between p-2 bg-gray-50 rounded-md"
+                                                >
+                                                  <div>
+                                                    <span className="font-medium">
+                                                      {format(new Date(proposal.dateTime), "PPP à HH:mm", { locale: fr })}
+                                                    </span>
+                                                    <span className={`ml-2 text-sm ${
+                                                      proposal.status === "accepted"
+                                                        ? "text-green-600"
+                                                        : proposal.status === "rejected"
+                                                        ? "text-red-600"
+                                                        : "text-gray-600"
+                                                    }`}>
+                                                      ({proposal.status === "accepted"
+                                                        ? "Accepté"
+                                                        : proposal.status === "rejected"
+                                                        ? "Refusé"
+                                                        : "En attente"})
+                                                    </span>
+                                                  </div>
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={async () => {
+                                                      if (confirm("Voulez-vous supprimer cette proposition ?")) {
+                                                        if (!proposal.id) {
+                                                          alert("ID de proposition manquant ! Impossible de supprimer.");
+                                                          console.log("Proposition sans id:", proposal);
+                                                          return;
+                                                        }
+                                                        console.log("Suppression proposition id:", proposal.id);
+                                                        try {
+                                                          const response = await fetch(
+                                                            `/api/projects/${selectedProject._id}/meeting-proposals?proposalId=${proposal.id}`,
+                                                            { method: "DELETE" }
+                                                          )
+                                                          if (!response.ok) {
+                                                            const err = await response.json();
+                                                            throw new Error(err.error || "Erreur lors de la suppression");
+                                                          }
+                                                          // Recharger les projets
+                                                          const res = await fetch("/api/projects")
+                                                          const data = await res.json()
+                                                          setProjects(data)
+                                                          setSelectedProject(data.find((p: any) => p._id === selectedProject._id))
+                                                        } catch (error) {
+                                                          console.error("Erreur:", error)
+                                                          alert("Erreur lors de la suppression: " + (error.message || error))
+                                                        }
+                                                      }
+                                                    }}
+                                                  >
+                                                    <Trash2 className="h-4 w-4" />
+                                                  </Button>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   )}
@@ -1466,6 +1809,75 @@ export default function TableauDeBordAdmin() {
           </div>
         )
       ))}
+
+      {/* Modal pour afficher le mandat SEPA final */}
+      {selectedProject && selectedProject.stages && selectedProject.stages.map((stage: any) => (
+        stage.mandatSepaFile && showRibModal[selectedProject._id + '-mandat-final'] && (
+          <div key={stage.id} className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+            <div className="bg-white rounded-xl shadow-lg w-full max-w-4xl h-[80vh] p-6 relative">
+              <button
+                className="absolute top-3 right-3 text-gray-400 hover:text-gray-600"
+                onClick={() => setShowRibModal((prev: any) => ({ ...prev, [selectedProject._id + '-mandat-final']: false }))}
+                aria-label="Fermer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <h2 className="text-xl font-bold text-brand-dark mb-4">Mandat SEPA Final</h2>
+              <iframe
+                src={`/api/projects/${selectedProject._id}/mandat-sepa/file?fileId=${stage.mandatSepaFile.fileId}`}
+                className="w-full h-full border-0"
+                title="Mandat SEPA Final"
+              />
+            </div>
+          </div>
+        )
+      ))}
+
+      {/* Modal pour afficher le diagramme de Gantt */}
+      {selectedProject && showRibModal[selectedProject._id + '-gantt'] && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-6xl h-[90vh] p-6 relative">
+            <button
+              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600"
+              onClick={() => setShowRibModal((prev: any) => ({ ...prev, [selectedProject._id + '-gantt']: false }))}
+              aria-label="Fermer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <h2 className="text-xl font-bold text-brand-dark mb-4">Planning de développement</h2>
+            <div className="h-[calc(100%-4rem)]">
+              <GanttChart
+                projectId={selectedProject._id}
+                tasks={selectedProject.developmentTasks || []}
+                onTasksChange={async (newTasks) => {
+                  try {
+                    const response = await fetch(`/api/projects/${selectedProject._id}/development-tasks`, {
+                      method: 'PUT',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({ tasks: newTasks }),
+                    });
+                    
+                    if (!response.ok) {
+                      throw new Error('Failed to update development tasks');
+                    }
+                    
+                    // Mettre à jour l'état local
+                    const updatedProject = await response.json();
+                    setProjects(projects.map(p => 
+                      p._id === selectedProject._id ? { ...p, developmentTasks: updatedProject.developmentTasks } : p
+                    ));
+                  } catch (error) {
+                    console.error('Error updating development tasks:', error);
+                    alert('Erreur lors de la mise à jour des tâches de développement');
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

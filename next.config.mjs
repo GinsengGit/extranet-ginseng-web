@@ -9,14 +9,14 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  api: {
-    bodyParser: {
-      sizeLimit: '10mb',
-    },
-  },
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',
+    },
+  },
+  serverRuntimeConfig: {
+    bodyParser: {
+      sizeLimit: '10mb',
     },
   },
 }

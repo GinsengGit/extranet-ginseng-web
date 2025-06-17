@@ -62,8 +62,17 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     try {
       const _id = new ObjectId(fileId)
       
-      // Supprimer le fichier de GridFS
-      await bucket.delete(_id)
+      // Essayer de supprimer le fichier de GridFS
+      try {
+        await bucket.delete(_id)
+      } catch (e: any) {
+        // Si le fichier n'existe pas dans GridFS, on continue quand même
+        if (e.message?.includes("FileNotFound")) {
+          console.log("Le fichier n'existe pas dans GridFS, on continue avec le nettoyage des références")
+        } else {
+          throw e // Si c'est une autre erreur, on la propage
+        }
+      }
 
       // Mettre à jour le projet pour retirer la référence au fichier
       await db.collection("projects").updateOne(

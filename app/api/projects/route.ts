@@ -1,28 +1,38 @@
 import { NextRequest, NextResponse } from "next/server"
-import { MongoClient } from "mongodb"
-
-const uri = process.env.MONGODB_URI! 
-const client = new MongoClient(uri)
-const dbName = "ma-base-de-données-SpaceX" 
+import { connectToDatabase } from "@/lib/mongodb"
 
 export async function POST(request: NextRequest) {
-  const data = await request.json()
-  await client.connect()
-  const db = client.db(dbName)
-  const collection = db.collection("projects")
-  const result = await collection.insertOne(data)
-  return NextResponse.json({ insertedId: result.insertedId })
+  try {
+    const data = await request.json()
+    const { db } = await connectToDatabase()
+    const collection = db.collection("projects")
+    const result = await collection.insertOne(data)
+    return NextResponse.json({ insertedId: result.insertedId })
+  } catch (error) {
+    console.error("Error creating project:", error)
+    return NextResponse.json(
+      { error: "Failed to create project" },
+      { status: 500 }
+    )
+  }
 }
 
 export async function GET(request: NextRequest) {
-  await client.connect()
-  const db = client.db(dbName)
-  const collection = db.collection("projects")
-  const clientEmail = request.nextUrl.searchParams.get("clientEmail")
-  let query = {}
-  if (clientEmail) {
-    query = { clientEmail }
+  try {
+    const { db } = await connectToDatabase()
+    const collection = db.collection("projects")
+    const clientEmail = request.nextUrl.searchParams.get("clientEmail")
+    let query = {}
+    if (clientEmail) {
+      query = { clientEmail }
+    }
+    const projects = await collection.find(query).toArray()
+    return NextResponse.json(projects)
+  } catch (error) {
+    console.error("Error fetching projects:", error)
+    return NextResponse.json(
+      { error: "Failed to fetch projects" },
+      { status: 500 }
+    )
   }
-  const projects = await collection.find(query).toArray()
-  return NextResponse.json(projects)
 }

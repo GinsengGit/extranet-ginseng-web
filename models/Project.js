@@ -8,6 +8,15 @@ const StageSchema = new mongoose.Schema({
   feedbackRounds: Number,
   maxFeedbackRounds: Number,
   feedbackDeadline: String,
+  meetingProposals: [{
+    id: String,
+    dateTime: Date,
+    status: {
+      type: String,
+      enum: ["proposed", "accepted", "rejected"],
+      default: "proposed"
+    }
+  }],
   cahierDesChargesFiles: [
     {
       fileId: mongoose.Schema.Types.ObjectId,
