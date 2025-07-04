@@ -44,7 +44,7 @@ export async function POST(
 
     // Met à jour le projet dans MongoDB
     await client.connect()
-    const db = client.db("project-management")
+    const db = client.db("ma-base-de-données-SpaceX")
     const projects = db.collection("projects")
 
     // Prépare l'objet fichier à ajouter
@@ -59,9 +59,7 @@ export async function POST(
     await projects.updateOne(
       { _id: new ObjectId(params.id) },
       {
-        $push: {
-          facturesFiles: fileObject
-        }
+        $push: { facturesFiles: fileObject } as any
       }
     )
 

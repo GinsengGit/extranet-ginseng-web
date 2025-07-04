@@ -5,9 +5,11 @@ const uri = process.env.MONGODB_URI!
 const dbName = "ma-base-de-données-SpaceX"
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const projectId = params.id
+  console.log('[UPLOAD] Début upload cahier des charges');
+  const { id: projectId } = await params
   const formData = await req.formData()
   const file = formData.get("file") as File
+  console.log('[UPLOAD] Fichier reçu:', file?.name, file?.type, file?.size);
   if (!file) return NextResponse.json({ error: "Aucun fichier envoyé" }, { status: 400 })
 
   const fileName = file.name || `cahier-des-charges-${projectId}-${Date.now()}.pdf`
@@ -16,11 +18,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const client = new MongoClient(uri)
   await client.connect()
+  console.log('[UPLOAD] Connexion MongoDB OK');
   const db = client.db(dbName)
   const collection = db.collection("projects")
   const bucket = new GridFSBucket(db, { bucketName: "cahierdescharges" })
 
   // Upload dans GridFS
+  console.log('[UPLOAD] Début upload GridFS:', fileName);
   const uploadStream = bucket.openUploadStream(fileName, {
     contentType: file.type || "application/pdf",
     metadata: { projectId }
@@ -32,9 +36,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   })
   const fileId = uploadStream.id
   const now = new Date()
+  console.log('[UPLOAD] Upload GridFS OK, fileId:', fileId);
 
   // Ajout dans le tableau de fichiers de l'étape cible (par défaut 2)
   const stageId = Number(formData.get("stageId")) || 2;
+  console.log('[UPLOAD] Ajout du fichier au projet, stageId:', stageId);
   await collection.updateOne(
     { _id: new ObjectId(projectId), "stages.id": stageId },
     {
@@ -48,5 +54,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       } as any
     }
   )
+  console.log('[UPLOAD] Update projet OK');
   return NextResponse.json({ fileId, fileName })
 }

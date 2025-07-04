@@ -39,7 +39,7 @@ export default function TableauDeBordClient() {
   const [selectedStage, setSelectedStage] = useState<any | null>(null)
   const [showAddStageModal, setShowAddStageModal] = useState(false)
   const [newStageName, setNewStageName] = useState("")
-  const [newStageId, setNewStageId] = useState<string|null>(null)
+  const [newStageProjectId, setNewStageProjectId] = useState<string|null>(null)
   const [isAddingStage, setIsAddingStage] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showPaymentOptions, setShowPaymentOptions] = useState<{ [key: string]: boolean }>({})
@@ -51,6 +51,14 @@ export default function TableauDeBordClient() {
   const [showMandatModal, setShowMandatModal] = useState<{ [key: string]: boolean }>({})
   const [error, setError] = useState<string | null>(null)
   const [showGanttModal, setShowGanttModal] = useState(false)
+  const [recettageUrlInput, setRecettageUrlInput] = useState("");
+  const [recettageCommentInput, setRecettageCommentInput] = useState("");
+  const [commentInputs, setCommentInputs] = useState<{ [key: number]: string }>({});
+  const [recettageModal, setRecettageModal] = useState<{ open: boolean, pageIdx: number | null }>({ open: false, pageIdx: null });
+  const [meetingProposalInput, setMeetingProposalInput] = useState("");
+  const [meetingProposalLoading, setMeetingProposalLoading] = useState(false);
+  const [meetingProposalError, setMeetingProposalError] = useState<string | null>(null);
+  const [ganttTasks, setGanttTasks] = useState<any[]>([]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -68,7 +76,7 @@ export default function TableauDeBordClient() {
   }, [user, isLoading])
 
   useEffect(() => {
-    if (user) {
+    if (user && user._id) {
       console.log("Fetching project data for user:", user._id)
       fetch(`/api/projects/client/${user._id}`)
         .then(async res => {
@@ -87,6 +95,8 @@ export default function TableauDeBordClient() {
           setProject(null)
         })
         .finally(() => setLoading(false))
+    } else {
+      console.log("user or user._id is undefined", user)
     }
   }, [user])
 
@@ -95,6 +105,14 @@ export default function TableauDeBordClient() {
       fetchProjectData();
     }
   }, [id]);
+
+  useEffect(() => {
+    if (project && project.stages) {
+      const stage15 = project.stages.find((s: any) => s.id === 15);
+      setRecettageUrlInput(stage15?.recettageUrl || "");
+      setRecettageCommentInput(stage15?.recettageComment || "");
+    }
+  }, [project]);
 
   if (isLoading || user === null || loading) {
     return (
@@ -221,6 +239,19 @@ export default function TableauDeBordClient() {
     }
   }
 
+  const handleOpenGanttModal = async () => {
+    if (!project || !project._id || typeof project._id !== 'string' || project._id.length !== 24) return;
+    try {
+      const res = await fetch(`/api/projects/${project._id}/development-tasks`);
+      const tasks = await res.json();
+      setGanttTasks(tasks);
+      setShowGanttModal(true);
+    } catch (err) {
+      setGanttTasks([]);
+      setShowGanttModal(true);
+    }
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-white">
       {/* MODAL AJOUT ÉTAPE */}
@@ -247,20 +278,20 @@ export default function TableauDeBordClient() {
               <Button
                 className="w-full"
                 onClick={async () => {
-                  if (!newStageName || !newStageId) return
+                  if (!newStageName || !newStageProjectId) return
                   setIsAddingStage(true)
                   try {
-                    const res = await fetch(`/api/projects/${newStageId}/stages`, {
+                    const res = await fetch(`/api/projects/${newStageProjectId}/stages`, {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ name: newStageName })
                     })
                     if (res.ok) {
                       const newStage = await res.json();
-                      setProjects(projects => projects.map(p => p._id === newStageId ? { ...p, stages: [...p.stages, newStage] } : p))
+                      setProjects(projects => projects.map(p => p._id === newStageProjectId ? { ...p, stages: [...p.stages, newStage] } : p))
                       setShowAddStageModal(false)
                       setNewStageName("")
-                      setNewStageId(null)
+                      setNewStageProjectId(null)
                     }
                   } finally {
                     setIsAddingStage(false)
@@ -360,60 +391,105 @@ export default function TableauDeBordClient() {
             )}
 
             {/* Propositions de rendez-vous */}
-            {selectedStage.id === 1 && selectedStage.meetingProposals && selectedStage.meetingProposals.length > 0 && (
+            {selectedStage.id === 1 && (
               <div className="mt-4 space-y-4">
                 <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">
-                    Propositions de rendez-vous
-                  </h4>
-                  <div className="space-y-2">
-                    {selectedStage.meetingProposals.map((proposal: any) => (
-                      <div
-                        key={proposal.id}
-                        className="flex items-center justify-between p-3 bg-gray-50 rounded-md"
-                      >
-                        <div>
-                          <span className="font-medium">
-                            {format(new Date(proposal.dateTime), "PPP à HH:mm", { locale: fr })}
-                          </span>
-                          <span className={`ml-2 text-sm ${
-                            proposal.status === "accepted"
-                              ? "text-green-600"
-                              : proposal.status === "rejected"
-                              ? "text-red-600"
-                              : "text-gray-600"
-                          }`}>
-                            ({proposal.status === "accepted"
-                              ? "Accepté"
-                              : proposal.status === "rejected"
-                              ? "Refusé"
-                              : "En attente"})
-                          </span>
-                        </div>
-                        {proposal.status === "proposed" && (
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleAcceptMeetingProposal(id, proposal.id)}
-                              className="text-green-600 border-green-600 hover:bg-green-50"
-                            >
-                              Accepter
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleRejectMeetingProposal(id, proposal.id)}
-                              className="text-red-600 border-red-600 hover:bg-red-50"
-                            >
-                              Refuser
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Proposer un rendez-vous</h4>
+                  <form
+                    className="flex flex-col md:flex-row gap-2 items-start md:items-end"
+                    onSubmit={async e => {
+                      e.preventDefault();
+                      if (!meetingProposalInput) return;
+                      setMeetingProposalLoading(true);
+                      setMeetingProposalError(null);
+                      try {
+                        const res = await fetch(`/api/projects/${id}/meeting-proposals`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ dateTime: meetingProposalInput })
+                        });
+                        if (!res.ok) {
+                          const err = await res.json();
+                          throw new Error(err.error || 'Erreur lors de la proposition');
+                        }
+                        setMeetingProposalInput("");
+                        // Recharge les données projet
+                        await fetchProjectData();
+                      } catch (err: any) {
+                        setMeetingProposalError(err.message);
+                      } finally {
+                        setMeetingProposalLoading(false);
+                      }
+                    }}
+                  >
+                    <input
+                      type="datetime-local"
+                      className="border rounded px-2 py-1"
+                      value={meetingProposalInput}
+                      onChange={e => setMeetingProposalInput(e.target.value)}
+                      required
+                      disabled={meetingProposalLoading}
+                    />
+                    <Button type="submit" disabled={meetingProposalLoading || !meetingProposalInput}>
+                      {meetingProposalLoading ? "Envoi..." : "Proposer"}
+                    </Button>
+                  </form>
+                  {meetingProposalError && (
+                    <div className="text-red-600 text-sm mt-1">{meetingProposalError}</div>
+                  )}
                 </div>
+                {selectedStage.meetingProposals && selectedStage.meetingProposals.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Propositions de rendez-vous</h4>
+                    <div className="space-y-2">
+                      {selectedStage.meetingProposals.map((proposal: any) => (
+                        <div
+                          key={proposal.id}
+                          className="flex items-center justify-between p-3 bg-gray-50 rounded-md"
+                        >
+                          <div>
+                            <span className="font-medium">
+                              {format(new Date(proposal.dateTime), "PPP à HH:mm", { locale: fr })}
+                            </span>
+                            <span className={`ml-2 text-sm ${
+                              proposal.status === "accepted"
+                                ? "text-green-600"
+                                : proposal.status === "rejected"
+                                ? "text-red-600"
+                                : "text-gray-600"
+                            }`}>
+                              ({proposal.status === "accepted"
+                                ? "Accepté"
+                                : proposal.status === "rejected"
+                                ? "Refusé"
+                                : "En attente"})
+                            </span>
+                          </div>
+                          {proposal.status === "proposed" && (
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleAcceptMeetingProposal(id, proposal.id)}
+                                className="text-green-600 border-green-600 hover:bg-green-50"
+                              >
+                                Accepter
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleRejectMeetingProposal(id, proposal.id)}
+                                className="text-red-600 border-red-600 hover:bg-red-50"
+                              >
+                                Refuser
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -565,34 +641,35 @@ export default function TableauDeBordClient() {
                               const prevStages = project.stages.filter((s: any) => s.id < stage.id);
                               const canUpload = prevStages.every((s: any) => s.status === "terminé");
 
-                                return (
-                                  <Card key={stage.id}
-                                  className={`border border-brand-blue shadow-md bg-blue-50 ${!canUpload ? 'opacity-70' : ''} ${stage.status === 'en cours' ? 'ring-2 ring-brand-yellow/50' : ''}`}>
-                                    <CardHeader className="pb-2">
-                                      <div className="flex items-center justify-between">
-                                        <CardTitle className="text-lg text-brand-dark">{stage.name}</CardTitle>
-                                      {!canUpload ? (
-                                        <LockIcon className="h-4 w-4 text-gray-400" />
-                                      ) : stage.status === "terminé" ? (
-                                        <CheckCircle className="h-4 w-4 text-green-500" />
-                                      ) : (
-                                        <UnlockIcon className="h-4 w-4 text-brand-blue" />
-                                      )}
-                                    </div>
-                                    <CardDescription>
-                                      {stage.status === "terminé" ? (
-                                        <>Terminé le {new Date(stage.date).toLocaleDateString("fr-FR")}</>
-                                      ) : stage.status === "en cours" ? (
-                                        <>En cours depuis le {new Date(stage.date).toLocaleDateString("fr-FR")}</>
-                                      ) : !canUpload ? (
-                                        <>Étapes précédentes en attente de validation</>
-                                      ) : (
-                                        <>Débloqué</>
-                                      )}
-                                    </CardDescription>
-                                  </CardHeader>
-                                  <CardContent>
-                                    {canUpload && (
+                              return (
+                                <Card key={stage.id}
+                                className={`border border-brand-blue shadow-md bg-blue-50 ${!canUpload ? 'opacity-70' : ''} ${stage.status === 'en cours' ? 'ring-2 ring-brand-yellow/50' : ''}`}>
+                                  <CardHeader className="pb-2">
+                                    <div className="flex items-center justify-between">
+                                      <CardTitle className="text-lg text-brand-dark">{stage.name}</CardTitle>
+                                    {!canUpload ? (
+                                      <LockIcon className="h-4 w-4 text-gray-400" />
+                                    ) : stage.status === "terminé" ? (
+                                      <CheckCircle className="h-4 w-4 text-green-500" />
+                                    ) : (
+                                      <UnlockIcon className="h-4 w-4 text-brand-blue" />
+                                    )}
+                                  </div>
+                                  <CardDescription>
+                                    {stage.status === "terminé" ? (
+                                      <>Terminé le {new Date(stage.date).toLocaleDateString("fr-FR")}</>
+                                    ) : stage.status === "en cours" ? (
+                                      <>En cours depuis le {new Date(stage.date).toLocaleDateString("fr-FR")}</>
+                                    ) : !canUpload ? (
+                                      <>Étapes précédentes en attente de validation</>
+                                    ) : (
+                                      <>Débloqué</>
+                                    )}
+                                  </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                  {/* Upload de fichiers */}
+                                  {stage.name && stage.name.toLowerCase().includes("upload de fichiers") && canUpload && (
                                     <div className="flex flex-col md:flex-row md:items-center gap-4 mb-2">
                                       <label htmlFor={`file-upload-${project._id}-${stage.id}`} className="inline-flex items-center px-4 py-2 bg-brand-blue text-white rounded cursor-pointer hover:bg-brand-yellow hover:text-brand-dark transition-colors">
                                         <Upload className="mr-2 h-5 w-5" />
@@ -606,7 +683,7 @@ export default function TableauDeBordClient() {
                                             if (!e.target.files || e.target.files.length === 0) return;
                                             setSelectedFile(e.target.files[0]);
                                           }}
-                                            disabled={isUploading}
+                                          disabled={isUploading}
                                         />
                                       </label>
                                       {selectedFile && (
@@ -614,7 +691,7 @@ export default function TableauDeBordClient() {
                                       )}
                                       <Button
                                         className="bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
-                                          disabled={!selectedFile || isUploading}
+                                        disabled={!selectedFile || isUploading}
                                         onClick={async () => {
                                           if (!selectedFile) return;
                                           setIsUploading(true);
@@ -622,10 +699,16 @@ export default function TableauDeBordClient() {
                                           formData.append("file", selectedFile);
                                           formData.append("stageId", stage.id);
                                           formData.append("stageName", stage.name);
-                                          await fetch(`/api/projects/${project._id}/cahier-des-charges/upload`, {
+                                          const uploadRes = await fetch(`/api/projects/${project._id}/cahier-des-charges/upload`, {
                                             method: "POST",
                                             body: formData,
                                           });
+                                          const uploadData = await uploadRes.json();
+                                          console.log('[UPLOAD][CLIENT] Réponse backend:', uploadData);
+                                          if (!uploadRes.ok) {
+                                            alert('Erreur lors de l\'upload: ' + (uploadData.error || uploadRes.status));
+                                            return;
+                                          }
                                           // Recharge les projets pour afficher le nouveau fichier
                                           const res = await fetch(`/api/projects?clientEmail=${encodeURIComponent(user.email)}`);
                                           const data = await res.json();
@@ -637,11 +720,68 @@ export default function TableauDeBordClient() {
                                         {isUploading ? "Upload en cours..." : "Uploader"}
                                       </Button>
                                     </div>
-                                    )}
-                                  </CardContent>
-                                </Card>
-                              );
-                            }
+                                  )}
+                                  {/* Devis */}
+                                  {stage.name && stage.name.toLowerCase().includes("devis") && stage.devisUrl && (
+                                    <Button
+                                      variant="outline"
+                                      className="border-brand-blue text-brand-blue hover:bg-brand-blue/10 mt-2"
+                                      onClick={() => window.open(stage.devisUrl, "_blank")}
+                                    >
+                                      <FileText className="mr-2 h-4 w-4" />
+                                      Voir le devis
+                                    </Button>
+                                  )}
+                                  {/* Signature (étape 4) */}
+                                  {stage.id === 4 && stage.signatureUrl && (
+                                    <Button
+                                      className="mt-2 bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
+                                      onClick={() => window.open(stage.signatureUrl, '_blank')}
+                                    >
+                                      Signer
+                                    </Button>
+                                  )}
+                                  {stage.id === 4 && !stage.signatureUrl && (
+                                    <Button className="mt-2" disabled>
+                                      Lien de signature non disponible
+                                    </Button>
+                                  )}
+                                  {/* Paiement final */}
+                                  {stage.name && stage.name.toLowerCase().includes("paiement final") && stage.status === "en cours" && (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                      {stage.cahierDesChargesFiles && stage.cahierDesChargesFiles.length > 0 && (
+                                        <Button
+                                          variant="outline"
+                                          className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                          onClick={() => setShowRibModal((prev: any) => ({ ...prev, [project._id + '-' + stage.id]: true }))}
+                                        >
+                                          Voir le RIB
+                                        </Button>
+                                      )}
+                                      {stage.mandatSepaFile && (
+                                        <Button
+                                          variant="outline"
+                                          className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                          onClick={() => setShowRibModal((prev: any) => ({ ...prev, [project._id + '-mandat-' + stage.id]: true }))}
+                                        >
+                                          Voir le mandat SEPA
+                                        </Button>
+                                      )}
+                                      {stage.paiementUrl && (
+                                        <Button
+                                          variant="default"
+                                          className="bg-brand-blue text-white hover:bg-brand-blue/90"
+                                          onClick={() => window.open(stage.paiementUrl, "_blank")}
+                                        >
+                                          Payer en ligne
+                                        </Button>
+                                      )}
+                                    </div>
+                                  )}
+                                </CardContent>
+                              </Card>
+                            );
+                          }
                             // Affichage spécial pour le paiement final
                             else if (stage && stage.name && stage.name.toLowerCase().includes("paiement final")) {
                               return (
@@ -713,8 +853,9 @@ export default function TableauDeBordClient() {
                                 <Card
                                   key={stage.id}
                                   className={`border border-gray-200 shadow-sm transition-all duration-200 ${
-                                    stage.status === "verrouillé" ? "opacity-70" : ""
+                                    stage.status === "verrouillé" ? "opacity-70 cursor-not-allowed" : "cursor-pointer hover:shadow-lg"
                                   } ${stage.status === "en cours" ? "ring-2 ring-brand-yellow/50" : ""}`}
+                                  onClick={() => stage.status !== "verrouillé" && setSelectedStage(stage)}
                                 >
                                   <CardHeader className="pb-2">
                                     <div className="flex items-center justify-between">
@@ -736,20 +877,304 @@ export default function TableauDeBordClient() {
                                         <>Verrouillé</>
                                       )}
                                     </CardDescription>
+                                    {/* Bouton explicite pour l'étape 1 */}
+                                    {stage.id === 1 && stage.status !== "verrouillé" && (
+                                      <Button
+                                        className="mt-2 w-full bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          setSelectedStage(stage);
+                                        }}
+                                      >
+                                        Détails / Proposer un rendez-vous
+                                      </Button>
+                                    )}
                                   </CardHeader>
                                   <CardContent>
                                     {/* Afficher le Gantt chart uniquement pour l'étape de développement */}
-                                    {stage.id === 14 && stage.status === "en cours" && (
+                                    {stage.id === 14 && stage.status === "en cours" && project && (
                                       <div className="mt-4">
                                         <Button
                                           variant="outline"
                                           className="w-full border-brand-blue text-brand-blue hover:bg-brand-blue/10"
-                                          onClick={() => setShowGanttModal(true)}
+                                          onClick={handleOpenGanttModal}
                                         >
                                           <FileText className="mr-2 h-4 w-4" />
                                           Voir l'avancement du projet
                                         </Button>
                                       </div>
+                                    )}
+                                    {stage.id === 3 && stage.devisUrl && (
+                                      <Button
+                                        variant="outline"
+                                        className="border-brand-blue text-brand-blue hover:bg-brand-blue/10 mt-2"
+                                        onClick={() => window.open(stage.devisUrl, "_blank")}
+                                      >
+                                        <FileText className="mr-2 h-4 w-4" />
+                                        Voir le devis
+                                      </Button>
+                                    )}
+                                    {stage.name && stage.name.toLowerCase().includes("cahier des charges") && (
+                                      <div className="flex flex-col gap-2 mt-2">
+                                        {/* Bouton Ajouter PDF */}
+                                        <label htmlFor={`cahier-upload-${project._id}-${stage.id}`} className="inline-flex items-center px-4 py-2 bg-brand-blue text-white rounded cursor-pointer hover:bg-brand-yellow hover:text-brand-dark transition-colors">
+                                          <Upload className="mr-2 h-5 w-5" />
+                                          Ajouter PDF
+                                          <input
+                                            id={`cahier-upload-${project._id}-${stage.id}`}
+                                            type="file"
+                                            accept=".pdf"
+                                            className="hidden"
+                                            onChange={async e => {
+                                              if (!e.target.files || e.target.files.length === 0) return;
+                                              const file = e.target.files[0];
+                                              const formData = new FormData();
+                                              formData.append("file", file);
+                                              formData.append("stageId", stage.id);
+                                              formData.append("stageName", stage.name);
+                                              const uploadRes = await fetch(`/api/projects/${project._id}/cahier-des-charges/upload`, {
+                                                method: "POST",
+                                                body: formData,
+                                              });
+                                              const uploadData = await uploadRes.json();
+                                              console.log('[UPLOAD][CLIENT] Réponse backend:', uploadData);
+                                              if (!uploadRes.ok) {
+                                                alert('Erreur lors de l\'upload: ' + (uploadData.error || uploadRes.status));
+                                                return;
+                                              }
+                                              // Recharge le projet pour afficher le nouveau fichier
+                                              const res = await fetch(`/api/projects/${project._id}`);
+                                              const data = await res.json();
+                                              setProject(data);
+                                            }}
+                                          />
+                                        </label>
+                                        {/* Bouton Voir PDF */}
+                                        {stage.cahierDesChargesFiles && stage.cahierDesChargesFiles.length > 0 && (
+                                          <Button
+                                            variant="outline"
+                                            className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                            onClick={() => window.open(`/api/projects/${project._id}/cahier-des-charges/file?fileId=${stage.cahierDesChargesFiles[0].fileId}`, "_blank")}
+                                          >
+                                            <FileText className="mr-2 h-4 w-4" />
+                                            Voir le PDF
+                                          </Button>
+                                        )}
+                                      </div>
+                                    )}
+                                    {stage.id === 4 && stage.signatureUrl && (
+                                      <Button
+                                        className="mt-2 bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
+                                        onClick={() => window.open(stage.signatureUrl, '_blank')}
+                                      >
+                                        Signer
+                                      </Button>
+                                    )}
+                                    {stage.id === 4 && !stage.signatureUrl && (
+                                      <Button className="mt-2" disabled>
+                                        Lien de signature non disponible
+                                      </Button>
+                                    )}
+                                    {stage.id === 15 && (
+                                      <div className="flex flex-col gap-4 mt-2">
+                                        <h4 className="text-sm font-bold text-brand-dark mb-2">Recettage des pages</h4>
+                                        {/* Affichage du lien mandat SEPA si présent */}
+                                        {stage.mandatSepaUrl && (
+                                          <Button
+                                            variant="outline"
+                                            className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                            onClick={() => window.open(stage.mandatSepaUrl, "_blank")}
+                                          >
+                                            Voir le site web
+                                          </Button>
+                                        )}
+                                        {(stage.pages || []).length === 0 && (
+                                          <div className="text-xs text-gray-500">Aucune page à recetter n'a encore été ajoutée par l'admin.</div>
+                                        )}
+                                        {(stage.pages || []).map((page: any, idx: number) => (
+                                          <button
+                                            key={idx}
+                                            className="w-full text-left border rounded p-2 bg-gray-50 hover:bg-brand-yellow/20 flex items-center justify-between"
+                                            onClick={() => setRecettageModal({ open: true, pageIdx: idx })}
+                                          >
+                                            <span className="font-medium text-brand-dark">{page.title}</span>
+                                            <span className="text-xs text-gray-400">{(page.comments?.length || 0)} commentaire(s)</span>
+                                          </button>
+                                        ))}
+                                        {/* Bouton Valider mes retours */}
+                                        {stage.feedbackStatus === 'client' && (stage.feedbackRounds ?? 0) < 3 && (
+                                          <Button
+                                            className="bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
+                                            onClick={async () => {
+                                              // Passer feedbackStatus à 'admin' pour figer les commentaires
+                                              const newStages = project.stages.map((s: any) =>
+                                                s.id === 15 ? { ...s, feedbackStatus: 'admin' } : s
+                                              );
+                                              await fetch(`/api/projects/${project._id}`, {
+                                                method: "PUT",
+                                                headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({ stages: newStages }),
+                                              });
+                                              setProject((prev: any) => ({ ...prev, stages: newStages }));
+                                            }}
+                                          >
+                                            Valider mes retours
+                                          </Button>
+                                        )}
+                                        {/* Modal d'édition de commentaire */}
+                                        <Dialog open={recettageModal.open} onOpenChange={open => setRecettageModal(m => ({ ...m, open }))}>
+                                          <DialogContent>
+                                            <DialogHeader>
+                                              <DialogTitle>Commenter la page</DialogTitle>
+                                            </DialogHeader>
+                                            {recettageModal.pageIdx !== null && stage.pages && stage.pages[recettageModal.pageIdx] && (
+                                              <div className="flex flex-col gap-4">
+                                                <div className="font-medium text-brand-dark mb-1">{stage.pages[recettageModal.pageIdx].title}</div>
+                                                <textarea
+                                                  className="border rounded px-2 py-1 flex-1 min-h-[160px] text-base"
+                                                  placeholder="Ajouter un commentaire détaillé..."
+                                                  value={commentInputs[recettageModal.pageIdx] || ""}
+                                                  onChange={e => setCommentInputs(inputs => ({ ...inputs, [recettageModal.pageIdx!]: e.target.value }))}
+                                                  rows={7}
+                                                  disabled={stage.feedbackStatus !== 'client' || (stage.feedbackRounds ?? 0) >= 3}
+                                                />
+                                                <Button
+                                                  size="sm"
+                                                  onClick={async () => {
+                                                    const idx = recettageModal.pageIdx!;
+                                                    if (!(commentInputs[idx] || "").trim()) return;
+                                                    const newPages = (stage.pages || []).map((p: any, pidx: number) =>
+                                                      pidx === idx
+                                                        ? {
+                                                            ...p,
+                                                            comments: [
+                                                              ...(p.comments || []),
+                                                              {
+                                                                user: user.firstName,
+                                                                text: commentInputs[idx],
+                                                                date: new Date().toISOString(),
+                                                              },
+                                                            ],
+                                                          }
+                                                        : p
+                                                    );
+                                                    const newStages = project.stages.map((s: any) =>
+                                                      s.id === 15 ? { ...s, pages: newPages } : s
+                                                    );
+                                                    console.log("[DEBUG] Envoi commentaire", { newStages, projectId: project._id });
+                                                    const response = await fetch(`/api/projects/${project._id}`, {
+                                                      method: "PUT",
+                                                      headers: { "Content-Type": "application/json" },
+                                                      body: JSON.stringify({ stages: newStages }),
+                                                    });
+                                                    const responseText = await response.text();
+                                                    console.log("[DEBUG] Réponse backend", response.status, responseText);
+                                                    if (!response.ok) {
+                                                      alert("Erreur lors de l'envoi du commentaire: " + responseText);
+                                                      return;
+                                                    }
+                                                    setProject((prev: any) => ({ ...prev, stages: newStages }));
+                                                    setCommentInputs(inputs => ({ ...inputs, [idx]: "" }));
+                                                  }}
+                                                  disabled={!(commentInputs[recettageModal.pageIdx!] || "").trim() || stage.feedbackStatus !== 'client' || (stage.feedbackRounds ?? 0) >= 3}
+                                                >
+                                                  Envoyer
+                                                </Button>
+                                                {/* Liste des commentaires */}
+                                                {stage.pages[recettageModal.pageIdx].comments && stage.pages[recettageModal.pageIdx].comments.length > 0 && (
+                                                  <div className="mb-1">
+                                                    <div className="text-xs text-gray-500 mb-1">Vos commentaires précédents :</div>
+                                                    <ul className="space-y-1">
+                                                      {stage.pages[recettageModal.pageIdx].comments.map((comment: any, cidx: number) => (
+                                                        <li key={cidx} className="text-xs bg-white rounded p-1 border">
+                                                          {comment.text}
+                                                          {comment.date && (
+                                                            <span className="block text-[10px] text-gray-400 mt-1">{new Date(comment.date).toLocaleString('fr-FR')}</span>
+                                                          )}
+                                                        </li>
+                                                      ))}
+                                                    </ul>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            )}
+                                          </DialogContent>
+                                        </Dialog>
+                                      </div>
+                                    )}
+                                    {stage.id === 15 && (
+                                      <div className="text-xs text-gray-500 font-semibold mb-2">
+                                        Cycle de retours : {(stage.feedbackRounds ?? 0) + 1} / 3
+                                      </div>
+                                    )}
+                                    {stage.id === 8 && stage.lienUrl && project && (
+                                      <Button
+                                        className="mt-2 w-full bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          window.open(stage.lienUrl, '_blank');
+                                        }}
+                                      >
+                                        Voir le lien
+                                      </Button>
+                                    )}
+                                    {stage.id === 9 && stage.status !== "verrouillé" && project && (
+                                      <Button
+                                        className="mt-2 w-full bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          window.location.href = `/client/projects/${project._id}/stages/9/copyrighting-form`;
+                                        }}
+                                      >
+                                        Remplir le formulaire légal (Copyrighting)
+                                      </Button>
+                                    )}
+                                    {stage.id === 10 && stage.figmaUrl && project && (
+                                      <Button
+                                        className="mt-2 w-full bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          window.open(stage.figmaUrl, '_blank');
+                                        }}
+                                      >
+                                        Voir l'aperçu Figma
+                                      </Button>
+                                    )}
+                                    {stage.id === 11 && stage.status === "en cours" && project && (
+                                      <Button
+                                        className="mt-2 w-full bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
+                                        onClick={async e => {
+                                          e.stopPropagation();
+                                          // Marquer l'étape comme terminée et débloquer la suivante
+                                          const updatedStages = project.stages.map((s: any) =>
+                                            s.id === 11 ? { ...s, status: "terminé", date: new Date().toISOString() } :
+                                            s.id === 12 ? { ...s, status: "en cours", date: new Date().toISOString() } : s
+                                          );
+                                          await fetch(`/api/projects/${project._id}`, {
+                                            method: "PUT",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({
+                                              currentStage: 12,
+                                              stages: updatedStages,
+                                            }),
+                                          });
+                                          // Recharge le projet pour mettre à jour l'affichage
+                                          await fetchProjectData();
+                                        }}
+                                      >
+                                        Valider l'étape
+                                      </Button>
+                                    )}
+                                    {stage.id === 13 && stage.status !== "verrouillé" && project && (
+                                      <Button
+                                        className="mt-2 w-full bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          window.location.href = `/client/projects/${project._id}/stages/13/preparer-dev-form`;
+                                        }}
+                                      >
+                                        Remplir le formulaire Préparer développement
+                                      </Button>
                                     )}
                                   </CardContent>
                                 </Card>
@@ -827,7 +1252,7 @@ export default function TableauDeBordClient() {
       ))}
 
       {/* Modal pour afficher le diagramme de Gantt */}
-      {showGanttModal && (
+      {showGanttModal && project && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
           <div className="bg-white rounded-xl shadow-lg w-full max-w-6xl h-[90vh] p-6 relative">
             <button
@@ -841,7 +1266,7 @@ export default function TableauDeBordClient() {
             <div className="h-[calc(100%-4rem)] overflow-auto">
               <GanttChart
                 projectId={project._id}
-                tasks={project.developmentTasks || []}
+                tasks={ganttTasks}
                 readOnly={true}
               />
             </div>
@@ -850,151 +1275,4 @@ export default function TableauDeBordClient() {
       )}
     </div>
   )
-}
-
-function CopyrightingForm({ id, stageId, initialData, onSubmitted }: { id: string, stageId: number, initialData?: any, onSubmitted: () => void }) {
-  const { user } = useUser()
-  const [form, setForm] = useState<any>(initialData || {});
-  const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState(false);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value, type } = e.target;
-    setForm((prev: any) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
-    }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    try {
-      const response = await fetch(`/api/projects/${id}/stages/${stageId}/copyrighting`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(form),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to submit form');
-      }
-
-      onSubmitted();
-    } catch (error) {
-      console.error('Error submitting form:', error);
-      alert('Erreur lors de la soumission du formulaire');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4 bg-blue-50 border border-brand-blue rounded p-4 mt-4">
-      <h4 className="font-semibold text-brand-dark mb-2">Formulaire – Rédaction des pages légales de votre site internet</h4>
-      <div className="text-xs text-gray-600 mb-2">Merci de remplir ce formulaire avec précision afin que nous puissions rédiger vos pages légales conformément aux obligations légales en vigueur.</div>
-      {/* 1. Informations générales */}
-      <div className="font-medium text-brand-dark">1. Informations générales sur l'éditeur du site</div>
-      <input className="input" name="nomSociete" placeholder="Nom complet de la société / entité" value={form.nomSociete || ''} onChange={handleChange} />
-      <input className="input" name="formeJuridique" placeholder="Forme juridique" value={form.formeJuridique || ''} onChange={handleChange} />
-      <input className="input" name="capitalSocial" placeholder="Capital social" value={form.capitalSocial || ''} onChange={handleChange} />
-      <input className="input" name="adresseSiege" placeholder="Adresse complète du siège social" value={form.adresseSiege || ''} onChange={handleChange} />
-      <input className="input" name="telephone" placeholder="Numéro de téléphone à afficher" value={form.telephone || ''} onChange={handleChange} />
-      <input className="input" name="emailContact" placeholder="Email de contact à afficher" value={form.emailContact || ''} onChange={handleChange} />
-      <input className="input" name="siret" placeholder="Numéro SIRET / SIREN" value={form.siret || ''} onChange={handleChange} />
-      <input className="input" name="rcs" placeholder="Numéro RCS + ville d'immatriculation" value={form.rcs || ''} onChange={handleChange} />
-      <input className="input" name="ape" placeholder="Code APE / NAF" value={form.ape || ''} onChange={handleChange} />
-      <input className="input" name="tva" placeholder="Numéro de TVA intracommunautaire" value={form.tva || ''} onChange={handleChange} />
-      <input className="input" name="directeurPublication" placeholder="Nom du directeur / responsable de la publication" value={form.directeurPublication || ''} onChange={handleChange} />
-      <input className="input" name="responsableRedaction" placeholder="Nom du responsable de la rédaction (si différent)" value={form.responsableRedaction || ''} onChange={handleChange} />
-      {/* 2. Professions réglementées */}
-      <div className="font-medium text-brand-dark mt-4">2. Informations spécifiques à certaines professions réglementées</div>
-      <input className="input" name="numLicence" placeholder="Numéro de licence / d'agrément / d'enregistrement professionnel" value={form.numLicence || ''} onChange={handleChange} />
-      <input className="input" name="autoritePro" placeholder="Nom et coordonnées de l'autorité ou de l'ordre professionnel" value={form.autoritePro || ''} onChange={handleChange} />
-      <input className="input" name="assurance" placeholder="Conditions d'assurance (RC pro, garantie financière, etc.)" value={form.assurance || ''} onChange={handleChange} />
-      {/* 3. Hébergement */}
-      <div className="font-medium text-brand-dark mt-4">3. Informations sur l'hébergement du site</div>
-      <div className="flex items-center gap-2">
-        <label><input type="checkbox" name="hebergementOui" checked={!!form.hebergementOui} onChange={handleChange} /> Oui</label>
-        <label><input type="checkbox" name="hebergementNon" checked={!!form.hebergementNon} onChange={handleChange} /> Non</label>
-        <label><input type="checkbox" name="hebergementAdefinir" checked={!!form.hebergementAdefinir} onChange={handleChange} /> À définir</label>
-      </div>
-      {form.hebergementNon && (
-        <>
-          <input className="input" name="nomHebergeur" placeholder="Nom de l'hébergeur" value={form.nomHebergeur || ''} onChange={handleChange} />
-          <input className="input" name="adresseHebergeur" placeholder="Adresse complète de l'hébergeur" value={form.adresseHebergeur || ''} onChange={handleChange} />
-          <input className="input" name="telHebergeur" placeholder="Téléphone de l'hébergeur" value={form.telHebergeur || ''} onChange={handleChange} />
-          <input className="input" name="siteHebergeur" placeholder="Site web de l'hébergeur" value={form.siteHebergeur || ''} onChange={handleChange} />
-        </>
-      )}
-      {/* 4. RGPD */}
-      <div className="font-medium text-brand-dark mt-4">4. Politique de confidentialité & RGPD</div>
-      <input className="input" name="emailFormulaire" placeholder="Adresse email de réception des formulaires" value={form.emailFormulaire || ''} onChange={handleChange} />
-      <div className="flex items-center gap-2">
-        <label><input type="checkbox" name="collecteOui" checked={!!form.collecteOui} onChange={handleChange} /> Oui</label>
-        <label><input type="checkbox" name="collecteNon" checked={!!form.collecteNon} onChange={handleChange} /> Non</label>
-      </div>
-      {form.collecteOui && (
-        <>
-          <label className="block text-xs font-medium text-brand-dark mb-1 mt-2">Pour quelles finalités ?</label>
-          <div className="flex flex-wrap gap-2">
-            <label><input type="checkbox" name="finaliteContact" checked={!!form.finaliteContact} onChange={handleChange} /> Gestion de contact</label>
-            <label><input type="checkbox" name="finaliteNewsletter" checked={!!form.finaliteNewsletter} onChange={handleChange} /> Newsletters</label>
-            <label><input type="checkbox" name="finaliteCompte" checked={!!form.finaliteCompte} onChange={handleChange} /> Création de compte</label>
-            <label><input type="checkbox" name="finaliteCommande" checked={!!form.finaliteCommande} onChange={handleChange} /> Commandes/paiements</label>
-            <label><input type="checkbox" name="finaliteRecrutement" checked={!!form.finaliteRecrutement} onChange={handleChange} /> Recrutement</label>
-            <label><input type="checkbox" name="finaliteAutre" checked={!!form.finaliteAutre} onChange={handleChange} /> Autre</label>
-          </div>
-          {form.finaliteAutre && (
-            <input className="input" name="finaliteAutrePreciser" placeholder="Précisez la finalité autre" value={form.finaliteAutrePreciser || ''} onChange={handleChange} />
-          )}
-        </>
-      )}
-      <label className="block text-xs font-medium text-brand-dark mb-1 mt-2">Outils de suivi ou cookies utilisés :</label>
-      <div className="flex flex-wrap gap-2">
-        <label><input type="checkbox" name="cookieAnalytics" checked={!!form.cookieAnalytics} onChange={handleChange} /> Google Analytics</label>
-        <label><input type="checkbox" name="cookieMeta" checked={!!form.cookieMeta} onChange={handleChange} /> Pixel Meta/Facebook</label>
-        <label><input type="checkbox" name="cookiePub" checked={!!form.cookiePub} onChange={handleChange} /> Publicité ciblée</label>
-        <label><input type="checkbox" name="cookieAutre" checked={!!form.cookieAutre} onChange={handleChange} /> Autres</label>
-      </div>
-      {form.cookieAutre && (
-        <input className="input" name="cookieAutrePreciser" placeholder="Précisez l'outil autre" value={form.cookieAutrePreciser || ''} onChange={handleChange} />
-      )}
-      <div className="flex items-center gap-2 mt-2">
-        <label><input type="checkbox" name="bandeauOui" checked={!!form.bandeauOui} onChange={handleChange} /> Bandeau cookies en place</label>
-        <label><input type="checkbox" name="bandeauNon" checked={!!form.bandeauNon} onChange={handleChange} /> Non</label>
-        <label><input type="checkbox" name="bandeauAfaire" checked={!!form.bandeauAfaire} onChange={handleChange} /> À mettre en place</label>
-      </div>
-      {/* 5. Conditions Générales */}
-      <div className="font-medium text-brand-dark mt-4">5. Conditions Générales (si e-commerce ou services)</div>
-      <div className="flex items-center gap-2">
-        <label><input type="checkbox" name="venteOui" checked={!!form.venteOui} onChange={handleChange} /> Oui</label>
-        <label><input type="checkbox" name="venteNon" checked={!!form.venteNon} onChange={handleChange} /> Non</label>
-      </div>
-      <div className="flex items-center gap-2">
-        <label><input type="checkbox" name="cgvOui" checked={!!form.cgvOui} onChange={handleChange} /> Rédaction CGV/CGU</label>
-        <label><input type="checkbox" name="cgvNon" checked={!!form.cgvNon} onChange={handleChange} /> Non</label>
-      </div>
-      <input className="input" name="typeProduits" placeholder="Types de produits/services concernés" value={form.typeProduits || ''} onChange={handleChange} />
-      <label className="block text-xs font-medium text-brand-dark mb-1 mt-2">Modes de paiement acceptés :</label>
-      <div className="flex flex-wrap gap-2">
-        <label><input type="checkbox" name="paiementCB" checked={!!form.paiementCB} onChange={handleChange} /> CB</label>
-        <label><input type="checkbox" name="paiementVirement" checked={!!form.paiementVirement} onChange={handleChange} /> Virement</label>
-        <label><input type="checkbox" name="paiementPaypal" checked={!!form.paiementPaypal} onChange={handleChange} /> Paypal</label>
-        <label><input type="checkbox" name="paiementLivraison" checked={!!form.paiementLivraison} onChange={handleChange} /> À la livraison</label>
-        <label><input type="checkbox" name="paiementAutre" checked={!!form.paiementAutre} onChange={handleChange} /> Autre</label>
-      </div>
-      {form.paiementAutre && (
-        <input className="input" name="paiementAutrePreciser" placeholder="Précisez le mode de paiement autre" value={form.paiementAutrePreciser || ''} onChange={handleChange} />
-      )}
-      <input className="input" name="zones" placeholder="Zones géographiques desservies / livrées" value={form.zones || ''} onChange={handleChange} />
-      <input className="input" name="remboursement" placeholder="Conditions de remboursement / droit de rétractation" value={form.remboursement || ''} onChange={handleChange} />
-      <Button type="submit" className="w-full bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark" disabled={submitting}>
-        {submitting ? "Envoi en cours..." : "Envoyer le formulaire"}
-      </Button>
-      {success && <div className="text-green-600 text-sm mt-2">Formulaire envoyé avec succès !</div>}
-    </form>
-  );
 }

@@ -6,7 +6,7 @@ const dbName = "ma-base-de-données-SpaceX"
 
 export async function POST(req: NextRequest, { params }: { params: { id: string, stageId: string } }) {
   try {
-    const { id: projectId, stageId } = params
+    const { id, stageId } = params
     const answers = await req.json()
     const client = new MongoClient(uri)
     await client.connect()
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string,
     const now = new Date()
     // Enregistre les réponses dans le champ copyrightingAnswers de l'étape
     const result = await collection.updateOne(
-      { _id: new ObjectId(projectId), "stages.id": Number(stageId) },
+      { _id: new ObjectId(id), "stages.id": Number(stageId) },
       {
         $set: {
           "stages.$.copyrightingAnswers": { ...answers, submittedAt: now }

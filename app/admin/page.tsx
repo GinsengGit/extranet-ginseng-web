@@ -42,6 +42,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
 import { GanttChart } from "@/components/gantt-chart"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 // Étapes par défaut pour un nouveau projet
 const defaultStages = [
@@ -98,6 +99,21 @@ export default function TableauDeBordAdmin() {
   const [showRibModal, setShowRibModal] = useState<any>({})
   const [selectedDate, setSelectedDate] = useState<Date>()
   const [selectedTime, setSelectedTime] = useState<string>("")
+  const [recettageInput, setRecettageInput] = useState<string>("");
+  const [recettageMessageInput, setRecettageMessageInput] = useState<string>("");
+  const [recettageModal, setRecettageModal] = useState<{ open: boolean, pageIdx: number | null }>({ open: false, pageIdx: null });
+  // Ajout d'un state local pour le titre de page à ajouter
+  const [newRecettagePageTitle, setNewRecettagePageTitle] = useState("");
+  // Ajout d'un state local pour le modal de commentaire admin
+  const [adminRecettageModal, setAdminRecettageModal] = useState<{ open: boolean, pageIdx: number | null }>({ open: false, pageIdx: null });
+
+  useEffect(() => {
+    if (openedStageId === 15 && selectedProject) {
+      const stage = selectedProject.stages.find((s: any) => s.id === 15);
+      setRecettageInput(stage?.recettageUrl || "");
+      setRecettageMessageInput(stage?.recettageMessage || "");
+    }
+  }, [openedStageId, selectedProject]);
 
   // Charger les projets depuis MongoDB Atlas
   useEffect(() => {
@@ -464,7 +480,7 @@ export default function TableauDeBordAdmin() {
     setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
   };
 
-  const handleOpenStage = async (stageId: number) => {
+  const handleOpenStage = async (stageId: number | null) => {
     setOpenedStageId(stageId);
     // Recharge les projets pour avoir les dernières réponses du formulaire
     const res = await fetch("/api/projects");
@@ -524,6 +540,110 @@ export default function TableauDeBordAdmin() {
       alert(error instanceof Error ? error.message : "Erreur lors de l'ajout de la proposition")
     }
   }
+
+  // Fonction pour gérer le changement de l'URL de recettage
+  const handleRecettageUrlChange = async (newUrl: string, stageId: number) => {
+    if (!selectedProject) return;
+    setProjects((prev: any[]) => prev.map((p) =>
+      p._id === selectedProject._id
+        ? {
+            ...p,
+            stages: p.stages.map((s: any) =>
+              s.id === stageId ? { ...s, recettageUrl: newUrl } : s
+            ),
+          }
+        : p
+    ));
+    await fetch(`/api/projects/${selectedProject._id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stages: selectedProject.stages.map((s: any) =>
+          s.id === stageId ? { ...s, recettageUrl: newUrl } : s
+        ),
+      }),
+    });
+  };
+
+  // Fonction pour gérer le changement du message de recettage
+  const handleRecettageMessageChange = async (newMessage: string, stageId: number) => {
+    if (!selectedProject) return;
+    setProjects((prev: any[]) => prev.map((p) =>
+      p._id === selectedProject._id
+        ? {
+            ...p,
+            stages: p.stages.map((s: any) =>
+              s.id === stageId ? { ...s, recettageMessage: newMessage } : s
+            ),
+          }
+        : p
+    ));
+    await fetch(`/api/projects/${selectedProject._id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stages: selectedProject.stages.map((s: any) =>
+          s.id === stageId ? { ...s, recettageMessage: newMessage } : s
+        ),
+      }),
+    });
+  };
+
+  // Fonction pour gérer le changement de l'URL du mandat SEPA (étape 15)
+  const handleMandatSepaUrlChange = async (newUrl: string, stageId: number) => {
+    if (!selectedProject) return;
+    setProjects((prev: any[]) => prev.map((p) =>
+      p._id === selectedProject._id
+        ? {
+            ...p,
+            stages: p.stages.map((s: any) =>
+              s.id === stageId ? { ...s, mandatSepaUrl: newUrl } : s
+            ),
+          }
+      : p
+    ));
+    await fetch(`/api/projects/${selectedProject._id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stages: selectedProject.stages.map((s: any) =>
+          s.id === stageId ? { ...s, mandatSepaUrl: newUrl } : s
+        ),
+      }),
+    });
+    const res = await fetch("/api/projects");
+    const data = await res.json();
+    setProjects(data);
+    setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
+  };
+
+  // Ajoute la fonction handleLienUrlChange dans le composant
+  const handleLienUrlChange = async (newUrl: string, stageId: number) => {
+    if (!selectedProject) return;
+    setProjects((prev: any[]) => prev.map((p) =>
+      p._id === selectedProject._id
+        ? {
+            ...p,
+            stages: p.stages.map((s: any) =>
+              s.id === stageId ? { ...s, lienUrl: newUrl } : s
+            ),
+          }
+      : p
+    ));
+    await fetch(`/api/projects/${selectedProject._id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stages: selectedProject.stages.map((s: any) =>
+          s.id === stageId ? { ...s, lienUrl: newUrl } : s
+        ),
+      }),
+    });
+    const res = await fetch("/api/projects");
+    const data = await res.json();
+    setProjects(data);
+    setSelectedProject(data.find((p: any) => p._id === selectedProject._id));
+  };
 
   if (isLoading || !user || user.role !== "admin") {
     return (
@@ -1120,7 +1240,7 @@ export default function TableauDeBordAdmin() {
                                     </div>
                                   )}
                                   {/* Affichage du champ logoBrandingUrl SEULEMENT si l'étape Logo/Branding est ouverte */}
-                                  {stage.name.toLowerCase().includes("logo") && openedStageId === stage.id && (
+                                  {stage.name.toLowerCase().includes("logo") && openedStageId === stage.id && stage.id !== 8 && (
                                     <>
                                       <div className="mt-2">
                                         <label className="block text-xs font-medium text-brand-dark mb-1">Lien logo/branding</label>
@@ -1307,11 +1427,17 @@ export default function TableauDeBordAdmin() {
                                               const file = e.target.files[0];
                                               const formData = new FormData();
                                               formData.append("file", file);
-                                              formData.append("stageId", "5"); // Ajout pour cibler l'étape 5
-                                              await fetch(`/api/projects/${selectedProject._id}/cahier-des-charges/upload`, {
+                                              formData.append("stageId", "5");
+                                              const uploadRes = await fetch(`/api/projects/${selectedProject._id}/cahier-des-charges/upload`, {
                                                 method: "POST",
                                                 body: formData,
                                               });
+                                              const uploadData = await uploadRes.json();
+                                              console.log('[UPLOAD][ADMIN] Réponse backend:', uploadData);
+                                              if (!uploadRes.ok) {
+                                                alert('Erreur lors de l\'upload: ' + (uploadData.error || uploadRes.status));
+                                                return;
+                                              }
                                               // Recharge les projets
                                               const res = await fetch("/api/projects");
                                               const data = await res.json();
@@ -1337,6 +1463,17 @@ export default function TableauDeBordAdmin() {
                                               Voir le RIB
                                             </a>
                                           )}
+                                          {/* Affichage du fichier Mandat SEPA s'il existe */}
+                                          {stage.mandatSepaFile && (
+                                            <a
+                                              href={`/api/projects/${selectedProject._id}/mandat-sepa/file?fileId=${stage.mandatSepaFile.fileId}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="ml-2 text-xs underline text-brand-blue"
+                                            >
+                                              Voir le mandat SEPA
+                                            </a>
+                                          )}
                                         </div>
                                       </div>
                                       {/* Champ URL Mandat SEPA */}
@@ -1353,11 +1490,17 @@ export default function TableauDeBordAdmin() {
                                               const file = e.target.files[0];
                                               const formData = new FormData();
                                               formData.append("file", file);
-                                              formData.append("stageId", "5"); // Ajout pour cibler l'étape 5
-                                              await fetch(`/api/projects/${selectedProject._id}/mandat-sepa/upload`, {
+                                              formData.append("stageId", "5");
+                                              const uploadRes = await fetch(`/api/projects/${selectedProject._id}/mandat-sepa/upload`, {
                                                 method: "POST",
                                                 body: formData,
                                               });
+                                              const uploadData = await uploadRes.json();
+                                              console.log('[UPLOAD][ADMIN] Réponse backend:', uploadData);
+                                              if (!uploadRes.ok) {
+                                                alert('Erreur lors de l\'upload: ' + (uploadData.error || uploadRes.status));
+                                                return;
+                                              }
                                               // Recharge les projets
                                               const res = await fetch("/api/projects");
                                               const data = await res.json();
@@ -1694,7 +1837,7 @@ export default function TableauDeBordAdmin() {
                                                           setSelectedProject(data.find((p: any) => p._id === selectedProject._id))
                                                         } catch (error) {
                                                           console.error("Erreur:", error)
-                                                          alert("Erreur lors de la suppression: " + (error.message || error))
+                                                          alert("Erreur lors de la suppression: " + ((error as any).message || error))
                                                         }
                                                       }
                                                     }}
@@ -1707,6 +1850,222 @@ export default function TableauDeBordAdmin() {
                                           </div>
                                         )}
                                       </div>
+                                    </div>
+                                  )}
+                                  {stage.id === 17 && (
+                                    <Button
+                                      className="mt-2 bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark"
+                                      onClick={async () => {
+                                        await fetch(`/api/projects/${selectedProject._id}/notify-client`, {
+                                          method: "POST",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({
+                                            subject: "Votre site est en ligne !",
+                                            message: "Bonjour, votre site vient d'être mis en ligne. Félicitations !"
+                                          })
+                                        });
+                                        await handleCompleteStage();
+                                        alert("Le client a été notifié et l'étape validée !");
+                                      }}
+                                    >
+                                      Notifier le client et valider l'étape
+                                    </Button>
+                                  )}
+                                  {stage.id === 15 && openedStageId === 15 && (
+                                    <>
+                                      {/* Champ d'ajout de page à recetter */}
+                                      <div className="flex gap-2 mb-2">
+                                        <input
+                                          type="text"
+                                          value={newRecettagePageTitle}
+                                          onChange={e => setNewRecettagePageTitle(e.target.value)}
+                                          placeholder="Ajouter un titre de page (ex: Accueil, Contact...)"
+                                          className="flex-1 px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                                        />
+                                        <Button
+                                          className="bg-brand-yellow text-brand-dark hover:bg-brand-yellow/90"
+                                          onClick={async () => {
+                                            if (!newRecettagePageTitle.trim()) return;
+                                            const isFirstCycle = !stage.feedbackRounds || stage.feedbackRounds === 0;
+                                            const newPages = [...(stage.pages || []), { title: newRecettagePageTitle, comments: [] }];
+                                            const newStages = selectedProject.stages.map((s: any) =>
+                                              s.id === 15
+                                                ? {
+                                                    ...s,
+                                                    pages: newPages,
+                                                    feedbackStatus: isFirstCycle ? 'client' : s.feedbackStatus,
+                                                  }
+                                                : s
+                                            );
+                                            await fetch(`/api/projects/${selectedProject._id}`, {
+                                              method: "PUT",
+                                              headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({ stages: newStages }),
+                                            });
+                                            setProjects((prev: any[]) => prev.map((p) =>
+                                              p._id === selectedProject._id ? { ...p, stages: newStages } : p
+                                            ));
+                                            setSelectedProject((prev: any) => ({ ...prev, stages: newStages }));
+                                            setNewRecettagePageTitle("");
+                                          }}
+                                        >
+                                          + Ajouter
+                                        </Button>
+                                      </div>
+                                      {/* Liste des pages à recetter avec bouton suppression */}
+                                      {(stage.pages || []).length > 0 && (
+                                        <div className="mt-2">
+                                          <h4 className="text-sm font-medium text-brand-dark mb-2">Pages à recetter</h4>
+                                          <ul className="space-y-2">
+                                            {stage.pages.map((page: any, idx: number) => (
+                                              <li key={idx} className="border rounded p-2 bg-gray-50 flex flex-col gap-2">
+                                                <div className="flex items-center justify-between">
+                                                  <button
+                                                    className="font-medium text-brand-dark underline hover:text-brand-blue text-left"
+                                                    onClick={() => setAdminRecettageModal({ open: true, pageIdx: idx })}
+                                                  >
+                                                    {page.title}
+                                                  </button>
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={async () => {
+                                                      const newPages = stage.pages.filter((_: any, i: number) => i !== idx);
+                                                      const newStages = selectedProject.stages.map((s: any) =>
+                                                        s.id === 15 ? { ...s, pages: newPages } : s
+                                                      );
+                                                      await fetch(`/api/projects/${selectedProject._id}`, {
+                                                        method: "PUT",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({ stages: newStages }),
+                                                      });
+                                                      setProjects((prev: any[]) => prev.map((p) =>
+                                                        p._id === selectedProject._id ? { ...p, stages: newStages } : p
+                                                      ));
+                                                      setSelectedProject((prev: any) => ({ ...prev, stages: newStages }));
+                                                    }}
+                                                    title="Supprimer ce titre"
+                                                  >
+                                                    <Trash2 className="h-4 w-4 text-red-500" />
+                                                  </Button>
+                                                </div>
+                                                {/* Liste des commentaires pour cette page (raccourci, modal pour le détail) */}
+                                                {page.comments && page.comments.length > 0 && (
+                                                  <div className="mt-1 text-xs text-gray-500">{page.comments.length} commentaire(s)</div>
+                                                )}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                          {/* Modal d'affichage des commentaires client pour une page */}
+                                          <Dialog open={adminRecettageModal.open} onOpenChange={open => setAdminRecettageModal(m => ({ ...m, open }))}>
+                                            <DialogContent>
+                                              <DialogHeader>
+                                                <DialogTitle>Commentaires du client</DialogTitle>
+                                              </DialogHeader>
+                                              {adminRecettageModal.pageIdx !== null && stage.pages && stage.pages[adminRecettageModal.pageIdx!] && (
+                                                <div className="flex flex-col gap-2">
+                                                  <div className="font-medium text-brand-dark mb-1">{stage.pages[adminRecettageModal.pageIdx!].title}</div>
+                                                  {stage.pages[adminRecettageModal.pageIdx!].comments && stage.pages[adminRecettageModal.pageIdx!].comments.length > 0 ? (
+                                                    <ul className="space-y-1">
+                                                      {stage.pages[adminRecettageModal.pageIdx!].comments.map((comment: any, cidx: number) => (
+                                                        <li key={cidx} className="text-xs bg-white rounded p-1 border">
+                                                          {comment.text}
+                                                          {comment.date && (
+                                                            <span className="block text-[10px] text-gray-400 mt-1">{new Date(comment.date).toLocaleString('fr-FR')}</span>
+                                                          )}
+                                                        </li>
+                                                      ))}
+                                                    </ul>
+                                                  ) : (
+                                                    <div className="text-xs text-gray-500">Aucun commentaire pour cette page.</div>
+                                                  )}
+                                                </div>
+                                              )}
+                                            </DialogContent>
+                                          </Dialog>
+                                        </div>
+                                      )}
+                                      {/* Champ URL juste après la liste des pages à recetter */}
+                                      <div className="mt-4">
+                                        <label className="block text-xs font-medium text-brand-dark mb-1">Lien du mandat SEPA</label>
+                                        <div className="flex gap-2">
+                                          <input
+                                            type="text"
+                                            value={stage.mandatSepaUrl || ""}
+                                            onChange={e => handleMandatSepaUrlChange(e.target.value, stage.id)}
+                                            placeholder="Entrez le lien du site"
+                                            className="flex-1 px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                                          />
+                                          {stage.mandatSepaUrl && (
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => window.open(stage.mandatSepaUrl, "_blank")}
+                                            >
+                                              Voir le lien
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </div>
+                                      {/* Partie commentaires (inchangée) suit ici */}
+                                      {/* Bouton Renvoi des pages à recetter */}
+                                      {stage.feedbackStatus === 'admin' && (stage.feedbackRounds ?? 0) < 3 && (
+                                        <Button
+                                          className="bg-brand-blue text-white hover:bg-brand-yellow hover:text-brand-dark mt-2"
+                                          onClick={async () => {
+                                            let newFeedbackRounds = (stage.feedbackRounds ?? 0) + 1;
+                                            let newFeedbackStatus = newFeedbackRounds >= 3 ? 'locked' : 'client';
+                                            const newStages = selectedProject.stages.map((s: any) =>
+                                              s.id === 15 ? { ...s, feedbackRounds: newFeedbackRounds, feedbackStatus: newFeedbackStatus } : s
+                                            );
+                                            await fetch(`/api/projects/${selectedProject._id}`, {
+                                              method: "PUT",
+                                              headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({ stages: newStages }),
+                                            });
+                                            setProjects((prev: any[]) => prev.map((p) =>
+                                              p._id === selectedProject._id ? { ...p, stages: newStages } : p
+                                            ));
+                                            setSelectedProject((prev: any) => ({ ...prev, stages: newStages }));
+                                          }}
+                                        >
+                                          Renvoi des pages à recetter
+                                        </Button>
+                                      )}
+                                    </>
+                                  )}
+                                  {stage.id === 15 && (
+                                    <div className="text-xs text-gray-500 font-semibold mb-2">
+                                      Cycle de retours : {(stage.feedbackRounds ?? 0) + 1} / 3
+                                    </div>
+                                  )}
+                                  {stage.id === 8 && openedStageId === 8 && (
+                                    <div className="mt-2">
+                                      <label className="block text-xs font-medium text-brand-dark mb-1">Lien (tous types)</label>
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="url"
+                                          className="flex-1 border rounded px-2 py-1 text-sm truncate"
+                                          placeholder="https://..."
+                                          value={stage.lienUrl || ''}
+                                          onChange={e => handleLienUrlChange(e.target.value, 8)}
+                                          style={{ minWidth: 0 }}
+                                        />
+                                        <Button
+                                          variant="outline"
+                                          className="border-brand-blue text-brand-blue hover:bg-brand-blue/10"
+                                          onClick={async () => {
+                                            await handleLienUrlChange(stage.lienUrl || '', 8);
+                                          }}
+                                        >
+                                          Enregistrer
+                                        </Button>
+                                      </div>
+                                      {stage.lienUrl && (
+                                        <div className="mt-1 text-xs text-brand-blue break-all max-w-full">
+                                          Lien actuel : <a href={stage.lienUrl} target="_blank" rel="noopener noreferrer" className="underline break-all max-w-full inline-block">{stage.lienUrl}</a>
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </div>
@@ -1853,21 +2212,21 @@ export default function TableauDeBordAdmin() {
                   try {
                     const response = await fetch(`/api/projects/${selectedProject._id}/development-tasks`, {
                       method: 'PUT',
-                      headers: {
-                        'Content-Type': 'application/json',
-                      },
+                      headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ tasks: newTasks }),
                     });
-                    
-                    if (!response.ok) {
-                      throw new Error('Failed to update development tasks');
-                    }
-                    
-                    // Mettre à jour l'état local
-                    const updatedProject = await response.json();
-                    setProjects(projects.map(p => 
+                    if (!response.ok) throw new Error('Failed to update development tasks');
+                    // Recharge le projet à jour
+                    const res = await fetch(`/api/projects/${selectedProject._id}`);
+                    const updatedProject = await res.json();
+                    setProjects(projects.map(p =>
                       p._id === selectedProject._id ? { ...p, developmentTasks: updatedProject.developmentTasks } : p
                     ));
+                    setSelectedProject((prev: any) =>
+                      prev && prev._id === updatedProject._id
+                        ? { ...prev, developmentTasks: updatedProject.developmentTasks }
+                        : prev
+                    );
                   } catch (error) {
                     console.error('Error updating development tasks:', error);
                     alert('Erreur lors de la mise à jour des tâches de développement');

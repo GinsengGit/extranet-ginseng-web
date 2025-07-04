@@ -6,12 +6,12 @@ const dbName = "ma-base-de-données-SpaceX"
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { id: projectId } = await Promise.resolve(params)
+    const { id } = await Promise.resolve(params)
     const formData = await req.formData()
     const file = formData.get("file") as File
     if (!file) return NextResponse.json({ error: "Aucun fichier envoyé" }, { status: 400 })
 
-    const fileName = file.name || `file-${projectId}-${Date.now()}`
+    const fileName = file.name || `file-${id}-${Date.now()}`
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     // Upload dans GridFS
     const uploadStream = bucket.openUploadStream(fileName, {
       contentType: file.type || "application/octet-stream",
-      metadata: { projectId }
+      metadata: { projectId: id }
     })
     uploadStream.end(buffer)
     await new Promise((resolve, reject) => {
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     // Ajout dans le tableau de fichiers généraux du projet
     await collection.updateOne(
-      { _id: new ObjectId(projectId) },
+      { _id: new ObjectId(id) },
       {
         $push: {
           generalFiles: {

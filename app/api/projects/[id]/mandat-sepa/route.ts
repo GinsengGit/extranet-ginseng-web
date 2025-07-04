@@ -6,7 +6,7 @@ const dbName = "ma-base-de-données-SpaceX"
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { id: projectId } = await Promise.resolve(params)
+    const { id } = await Promise.resolve(params)
     const url = new URL(req.url)
     const fileId = url.searchParams.get("fileId")
     if (!fileId) return NextResponse.json({ error: "fileId manquant" }, { status: 400 })
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { id: projectId } = await Promise.resolve(params)
+    const { id } = await Promise.resolve(params)
     const url = new URL(req.url)
     const fileId = url.searchParams.get("fileId")
     if (!fileId) return NextResponse.json({ error: "fileId manquant" }, { status: 400 })
@@ -76,7 +76,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
       // Mettre à jour le projet pour retirer la référence au fichier
       await db.collection("projects").updateOne(
-        { _id: new ObjectId(projectId), "stages.id": 5 },
+        { _id: new ObjectId(id), "stages.id": 5 },
         { $set: { "stages.$.mandatSepaFile": null } }
       )
 

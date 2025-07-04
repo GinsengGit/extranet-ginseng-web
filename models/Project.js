@@ -5,7 +5,15 @@ const StageSchema = new mongoose.Schema({
   name: String,
   status: String,
   date: String,
-  feedbackRounds: Number,
+  feedbackRounds: {
+    type: Number,
+    default: 0,
+  },
+  feedbackStatus: {
+    type: String,
+    enum: ['client', 'admin', 'locked'],
+    default: 'client',
+  },
   maxFeedbackRounds: Number,
   feedbackDeadline: String,
   meetingProposals: [{
@@ -28,6 +36,19 @@ const StageSchema = new mongoose.Schema({
   devisUrl: String, // Lien vers la plateforme de devis
   signatureUrl: String, // Lien de signature électronique
   paiementUrl: String, // Lien de paiement en ligne
+  pages: [
+    {
+      title: String,
+      comments: [
+        {
+          user: String,
+          text: String,
+          date: String,
+        }
+      ]
+    }
+  ],
+  lienUrl: String, // Lien générique pour l'étape
 })
 
 const CommentSchema = new mongoose.Schema({

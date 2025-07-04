@@ -9,9 +9,17 @@ export async function GET(
     const { db } = await connectToDatabase()
     
     // Récupérer le projet du client
-    const project = await db.collection("projects").findOne({
-      clientId: params.userId
+    const { userId } = await params
+    // Essayer de trouver par clientId
+    let project = await db.collection("projects").findOne({
+      clientId: userId
     })
+    // Si rien trouvé, essayer par clientEmail
+    if (!project) {
+      project = await db.collection("projects").findOne({
+        clientEmail: userId
+      })
+    }
 
     if (!project) {
       return new NextResponse(

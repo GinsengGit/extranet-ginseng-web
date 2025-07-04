@@ -2,6 +2,27 @@ import { NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/mongodb";
 import { ObjectId } from "mongodb";
 
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const { id } = params;
+    const { db } = await connectToDatabase();
+
+    const project = await db.collection("projects").findOne({ _id: new ObjectId(id) });
+    if (!project) {
+      console.log("Project not found:", id);
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(project.developmentTasks || []);
+  } catch (error) {
+    console.error("Error fetching development tasks:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
 export async function PUT(
   request: Request,
   { params }: { params: { id: string } }

@@ -6,10 +6,12 @@ const dbName = "ma-base-de-données-SpaceX"
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
+    console.log('[UPLOAD] Début upload mandat SEPA');
     const { id: projectId } = await Promise.resolve(params)
     const formData = await req.formData()
     const file = formData.get("file") as File
     const stageId = formData.get("stageId") as string
+    console.log('[UPLOAD] Fichier reçu:', file?.name, file?.type, file?.size, 'stageId:', stageId);
     if (!file) return NextResponse.json({ error: "Aucun fichier envoyé" }, { status: 400 })
     if (!stageId) return NextResponse.json({ error: "StageId manquant" }, { status: 400 })
 
@@ -24,11 +26,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const client = new MongoClient(uri)
     await client.connect()
+    console.log('[UPLOAD] Connexion MongoDB OK');
     const db = client.db(dbName)
     const collection = db.collection("projects")
     const bucket = new GridFSBucket(db, { bucketName: "mandatsepa" })
 
     // Upload dans GridFS
+    console.log('[UPLOAD] Début upload GridFS:', fileName);
     const uploadStream = bucket.openUploadStream(fileName, {
       contentType: file.type || "application/pdf",
       metadata: { projectId }
@@ -40,8 +44,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     })
     const fileId = uploadStream.id
     const now = new Date()
+    console.log('[UPLOAD] Upload GridFS OK, fileId:', fileId);
 
     // Mettre à jour le projet avec la référence au fichier
+    console.log('[UPLOAD] Ajout du fichier au projet, stageId:', stageId);
     await collection.updateOne(
       { _id: new ObjectId(projectId), "stages.id": parseInt(stageId) },
       {
@@ -55,6 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         }
       }
     )
+    console.log('[UPLOAD] Update projet OK');
 
     return NextResponse.json({ fileId, fileName })
   } catch (error) {

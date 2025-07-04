@@ -13,7 +13,7 @@ export async function PUT(
 ) {
   try {
     const { db } = await connectToDatabase()
-    const id = context.params.id
+    const { id } = await context.params
     const updates = await request.json()
 
     if (!id) {
@@ -43,7 +43,7 @@ export async function DELETE(
 ) {
   try {
     const { db } = await connectToDatabase()
-    const id = context.params.id
+    const { id } = await context.params
 
     if (!id) {
       return NextResponse.json({ error: "ID du projet manquant" }, { status: 400 })
@@ -69,7 +69,7 @@ export async function GET(
 ) {
   try {
     const { db } = await connectToDatabase()
-    const id = context.params.id
+    const { id } = await context.params
 
     if (!id) {
       return NextResponse.json({ error: "ID du projet manquant" }, { status: 400 })

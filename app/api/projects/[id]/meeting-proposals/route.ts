@@ -55,7 +55,7 @@ export async function POST(
   try {
     const { dateTime } = await request.json()
     const { db } = await connectToDatabase()
-    const projectId = context.params.id
+    const { id: projectId } = await context.params
 
     if (!projectId) {
       return NextResponse.json({ error: "ID du projet manquant" }, { status: 400 })
@@ -73,7 +73,7 @@ export async function POST(
       { _id: new ObjectId(projectId) },
       {
         $push: {
-          "stages.$[stage].meetingProposals": proposal
+          ["stages.$[stage].meetingProposals"]: proposal as any
         }
       },
       {
@@ -156,7 +156,7 @@ export async function DELETE(
   try {
     const { searchParams } = new URL(request.url)
     const proposalId = searchParams.get("proposalId")
-    const projectId = context.params.id
+    const { id: projectId } = await context.params
 
     if (!proposalId) {
       return NextResponse.json({ error: "ID de proposition requis" }, { status: 400 })
@@ -171,7 +171,7 @@ export async function DELETE(
       { _id: new ObjectId(projectId) },
       {
         $pull: {
-          "stages.$[stage].meetingProposals": { id: proposalId }
+          ["stages.$[stage].meetingProposals"]: { id: proposalId } as any
         }
       },
       {
