@@ -1,4 +1,4 @@
-import { MongoClient } from 'mongodb'
+import { MongoClient } from "mongodb"
 
 const options = {}
 
@@ -7,23 +7,21 @@ let clientPromise: Promise<MongoClient> | undefined
 function getMongoUri() {
   const uri = process.env.MONGODB_URI
   if (!uri) {
-    throw new Error('Missing MONGODB_URI environment variable')
+    throw new Error("Missing MONGODB_URI environment variable")
   }
   return uri
 }
 
-function getClientPromise() {
+export function getMongoClientPromise() {
   if (clientPromise) return clientPromise
 
   const uri = getMongoUri()
   const client = new MongoClient(uri, options)
 
-  if (process.env.NODE_ENV === 'development') {
-    // In development mode, keep a singleton across HMR reloads.
+  if (process.env.NODE_ENV === "development") {
     const globalWithMongo = global as typeof globalThis & {
       _mongoClientPromise?: Promise<MongoClient>
     }
-
     if (!globalWithMongo._mongoClientPromise) {
       globalWithMongo._mongoClientPromise = client.connect()
     }
@@ -35,13 +33,4 @@ function getClientPromise() {
   return clientPromise
 }
 
-export async function connectToDatabase() {
-  const dbName = process.env.MONGODB_DB
-  if (!dbName) {
-    throw new Error('Missing MONGODB_DB environment variable')
-  }
-
-  const client = await getClientPromise()
-  const db = client.db(dbName)
-  return { db, client }
-} 
+export default getMongoClientPromise
