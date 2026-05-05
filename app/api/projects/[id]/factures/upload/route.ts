@@ -4,12 +4,17 @@ import path from "path"
 import { MongoClient, ObjectId } from "mongodb"
 import { existsSync } from "fs"
 
-const client = new MongoClient(process.env.MONGODB_URI || "")
+function createMongoClient() {
+  const uri = process.env.MONGODB_URI
+  if (!uri) throw new Error("Missing MONGODB_URI environment variable")
+  return new MongoClient(uri)
+}
 
 export async function POST(
   request: Request,
   { params }: { params: { id: string } }
 ) {
+  const client = createMongoClient()
   try {
     const formData = await request.formData()
     const file = formData.get("file") as File

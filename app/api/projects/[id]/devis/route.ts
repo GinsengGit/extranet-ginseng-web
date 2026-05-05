@@ -3,12 +3,17 @@ import { MongoClient, ObjectId } from "mongodb"
 import { unlink } from "fs/promises"
 import path from "path"
 
-const client = new MongoClient(process.env.MONGODB_URI || "")
+function createMongoClient() {
+  const uri = process.env.MONGODB_URI
+  if (!uri) throw new Error("Missing MONGODB_URI environment variable")
+  return new MongoClient(uri)
+}
 
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
 ) {
+  const client = createMongoClient()
   try {
     await client.connect()
     const db = client.db("project-management")
@@ -42,6 +47,7 @@ export async function DELETE(
   request: Request,
   { params }: { params: { id: string } }
 ) {
+  const client = createMongoClient()
   try {
     const { searchParams } = new URL(request.url)
     const fileId = searchParams.get("fileId")

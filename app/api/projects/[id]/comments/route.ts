@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { MongoClient, ObjectId } from "mongodb"
 
-const uri = process.env.MONGODB_URI!
-const client = new MongoClient(uri)
 const dbName = "ma-base-de-données-SpaceX"
+
+function createMongoClient() {
+  const uri = process.env.MONGODB_URI
+  if (!uri) throw new Error("Missing MONGODB_URI environment variable")
+  return new MongoClient(uri)
+}
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const { user, text } = await request.json()
+  const client = createMongoClient()
   await client.connect()
   const db = client.db(dbName)
   const collection = db.collection("projects")
@@ -20,6 +25,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     { _id: new ObjectId(params.id) },
     { $push: { comments: comment } }
   )
+  await client.close()
   return NextResponse.json({ success: true })
 }
 
@@ -27,6 +33,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   const body = await request.json()
+  const client = createMongoClient()
   await client.connect()
   const db = client.db(dbName)
   const collection = db.collection("projects")
@@ -34,5 +41,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     { _id: new ObjectId(params.id) },
     { $set: body }
   )
+  await client.close()
   return NextResponse.json({ success: true })
 }

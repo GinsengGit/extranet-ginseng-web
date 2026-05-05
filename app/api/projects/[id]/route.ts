@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { MongoClient, ObjectId } from "mongodb"
 import { connectToDatabase } from "@/lib/mongodb"
 
-const uri = process.env.MONGODB_URI!
-const client = new MongoClient(uri)
-const dbName = "ma-base-de-données-SpaceX"
-
 // Mettre à jour un projet (ex: étapes)
 export async function PUT(
   request: NextRequest,
