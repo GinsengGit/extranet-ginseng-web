@@ -1,30 +1,25 @@
 import { NextRequest, NextResponse } from "next/server"
-import { MongoClient } from "mongodb"
+import { connectToDatabase } from "@/lib/mongodb"
 import bcrypt from "bcryptjs"
 
-const dbName = "ma-base-de-données-SpaceX"
-
-function createMongoClient() {
-  const uri = process.env.MONGODB_URI
-  if (!uri) throw new Error("Missing MONGODB_URI environment variable")
-  return new MongoClient(uri)
-}
-
 export async function POST(req: NextRequest) {
-  const { email, password } = await req.json()
-
-  if (!email || !password) {
-    return NextResponse.json({ error: "Missing fields" }, { status: 400 })
-  }
-
-  const client = createMongoClient()
   try {
-    await client.connect()
-    const db = client.db(dbName)
+    const { email, password } = await req.json()
+
+    if (!email || !password) {
+      return NextResponse.json({ error: "Missing fields" }, { status: 400 })
+    }
+
+    const { db } = await connectToDatabase()
     const users = db.collection("users")
 
     const user = await users.findOne({ email })
     if (!user) {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+    }
+
+    // Some legacy users may exist without a valid hashed password.
+    if (!user.password || typeof user.password !== "string") {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
     }
 
@@ -43,7 +38,8 @@ export async function POST(req: NextRequest) {
         avatarUrl: user.avatarUrl || null,
       }
     })
-  } finally {
-    await client.close()
+  } catch (error) {
+    console.error("Login API error:", error)
+    return NextResponse.json({ error: "Server error" }, { status: 500 })
   }
 }
